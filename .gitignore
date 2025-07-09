@@ -6,3 +6,5 @@ src/TodoApp.WorkerService/bin
 src/TodoApp.WorkerService/obj
 .config/dotnet-tools.json
 deploy/docker-compose.yml
+aws/aws-configure.ps1
+aws/test-deploy.ps1
