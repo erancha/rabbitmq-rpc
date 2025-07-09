@@ -2,9 +2,7 @@ version: "3.8"
 
 services:
   webapi:
-    build:
-      context: .
-      dockerfile: src/TodoApp.WebApi/Dockerfile
+    image: erancha/todo-app:webapi-latest
     ports:
       - "5000:8080"
     environment:
@@ -20,9 +18,7 @@ services:
     restart: unless-stopped
 
   worker:
-    build:
-      context: .
-      dockerfile: src/TodoApp.WorkerService/Dockerfile
+    image: erancha/todo-app:worker-latest
     environment:
       - DOTNET_ENVIRONMENT=Development
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=tododb;Username=postgres;Password=postgres
@@ -71,3 +67,4 @@ services:
 
 volumes:
   postgres_data:
+
