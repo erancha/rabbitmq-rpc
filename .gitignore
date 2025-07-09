@@ -1,0 +1,7 @@
+src/TodoApp.Shared/bin
+src/TodoApp.Shared/obj
+src/TodoApp.WebApi/bin
+src/TodoApp.WebApi/obj
+src/TodoApp.WorkerService/bin
+src/TodoApp.WorkerService/obj
+.config/dotnet-tools.json
