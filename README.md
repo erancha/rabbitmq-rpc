@@ -8,7 +8,7 @@ See the diagram for how the topic exchange routes messages to Workers' queues ba
 
 ![Todo App Architecture Diagram](architecture-diagram.svg)
 
-This application uses RabbitMQ's Topic Exchange pattern with RPC (Remote Procedure Call) for communication between the Web API and Worker services. Messages are published to a topic exchange (`todos-topic-exchange`) with specific routing keys (e.g., `user.created`, `todo.updated`), and the Worker Service binds its queues to patterns (`user.*` and `todo.*`) to receive relevant messages. Each request includes a temporary reply queue and correlation ID for RPC communication, enabling the Worker to process requests and send responses back to the Web API.
+This application uses RabbitMQ's Topic Exchange pattern with RPC (Remote Procedure Call) for communication between the Web API and Worker services. Messages are published to a topic exchange (`todo-app-exchange`) with specific routing keys (e.g., `user.created`, `todo.updated`), and the Worker Service binds its queues to patterns (`user.*` and `todo.*`) to receive relevant messages. Each request includes a temporary reply queue and correlation ID for RPC communication, enabling the Worker to process requests and send responses back to the Web API.
 
 **Why use RabbitMQ RPC?**
 
@@ -51,9 +51,9 @@ Run the following script to check dependencies and start the application:
 
 The following services will be available:
 
-- Web API: http://localhost:5000/swagger
-- RabbitMQ Management: http://localhost:15672 (guest/guest)
-- PostgreSQL: localhost:5432
+- [WebAPI](http://localhost:5000) (available on localhost:**5000**)
+- RabbitMQ (available on localhost:**5672**) and [Management UI](http://localhost:15672) (available on localhost:**15672**)
+- PostgreSQL (available on localhost:**5432**)
 
 ## Project Structure
 

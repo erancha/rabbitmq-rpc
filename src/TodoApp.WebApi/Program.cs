@@ -10,15 +10,15 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // Configure RabbitMQ
-var rabbitMQConfig = builder.Configuration.GetSection("RabbitMQ").Get<RabbitMQConfig>() 
-    ?? new RabbitMQConfig();
+var rabbitMQConfig =
+    builder.Configuration.GetSection("RabbitMQ").Get<RabbitMQConfig>() ?? new RabbitMQConfig();
 
 var factory = new ConnectionFactory
 {
     HostName = rabbitMQConfig.Host,
     UserName = rabbitMQConfig.Username,
     Password = rabbitMQConfig.Password,
-    Port = rabbitMQConfig.Port
+    Port = rabbitMQConfig.Port,
 };
 
 IConnection? connection = null;
@@ -32,7 +32,8 @@ for (int retry = 1; retry <= 5; retry++)
     }
     catch (Exception)
     {
-        if (retry == 5) throw;
+        if (retry == 5)
+            throw;
         var delay = TimeSpan.FromSeconds(Math.Pow(2, retry - 1)); // 1, 2, 4, 8, 16 seconds
         Thread.Sleep(delay);
     }
@@ -51,9 +52,10 @@ builder.Services.AddSingleton<IRabbitMQMessageService, RabbitMQMessageService>()
 // Setting durable: true means the exchange will survive a RabbitMQ server restart
 // The exchange definition is persisted to disk and restored on server startup
 channel.ExchangeDeclare(
-    exchange: RabbitMQConfig.TodosExchangeName,
+    exchange: RabbitMQConfig.AppExchangeName,
     type: ExchangeType.Topic,
-    durable: true);
+    durable: true
+);
 
 builder.Services.AddSingleton<IModel>(channel);
 

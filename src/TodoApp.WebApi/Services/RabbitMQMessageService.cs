@@ -1,9 +1,9 @@
-using RabbitMQ.Client;
 using System.Text;
 using System.Text.Json;
+using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
 using TodoApp.Shared.Configuration;
 using TodoApp.Shared.Models;
-using RabbitMQ.Client.Events;
 
 namespace TodoApp.WebApi.Services;
 
@@ -58,10 +58,11 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         properties.Type = typeof(T).Name;
 
         _channel.BasicPublish(
-            exchange: RabbitMQConfig.TodosExchangeName,
+            exchange: RabbitMQConfig.AppExchangeName,
             routingKey: routingKey,
             basicProperties: properties,
-            body: body);
+            body: body
+        );
     }
 
     public RpcResponse PublishMessageRpc<T>(T message, string routingKey)
@@ -81,27 +82,32 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         consumer.Received += (model, ea) =>
         {
 #if DEBUG
-            System.Diagnostics.Debug.Assert(ea.BasicProperties.CorrelationId == correlationId, "CorrelationId mismatch in RPC response");
+            System.Diagnostics.Debug.Assert(
+                ea.BasicProperties.CorrelationId == correlationId,
+                "CorrelationId mismatch in RPC response"
+            );
 #endif
             var response = Encoding.UTF8.GetString(ea.Body.ToArray());
             tcs.SetResult(response);
         };
 
-        _channel.BasicConsume(
-            consumer: consumer,
-            queue: replyQueueName,
-            autoAck: true);
+        _channel.BasicConsume(consumer: consumer, queue: replyQueueName, autoAck: true);
 
         _channel.BasicPublish(
-            exchange: RabbitMQConfig.TodosExchangeName,
+            exchange: RabbitMQConfig.AppExchangeName,
             routingKey: routingKey,
             basicProperties: properties,
-            body: body);
+            body: body
+        );
 
         // Wait for the response (with timeout for safety)
         tcs.Task.Wait(TimeSpan.FromSeconds(10));
         var response = tcs.Task.Result;
-        return JsonSerializer.Deserialize<RpcResponse>(response) ?? 
-            new RpcResponse { Success = false, Error = new RpcError { Kind = "FATAL", Message = "Failed to deserialize response" } };
+        return JsonSerializer.Deserialize<RpcResponse>(response)
+            ?? new RpcResponse
+            {
+                Success = false,
+                Error = new RpcError { Kind = "FATAL", Message = "Failed to deserialize response" },
+            };
     }
 }

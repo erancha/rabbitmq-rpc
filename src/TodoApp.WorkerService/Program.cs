@@ -9,18 +9,19 @@ var builder = Host.CreateApplicationBuilder(args);
 
 // Configure Database
 builder.Services.AddDbContext<TodoDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
+);
 
 // Configure RabbitMQ
-var rabbitMQConfig = builder.Configuration.GetSection("RabbitMQ").Get<RabbitMQConfig>()
-    ?? new RabbitMQConfig();
+var rabbitMQConfig =
+    builder.Configuration.GetSection("RabbitMQ").Get<RabbitMQConfig>() ?? new RabbitMQConfig();
 
 var factory = new ConnectionFactory
 {
     HostName = rabbitMQConfig.Host,
     UserName = rabbitMQConfig.Username,
     Password = rabbitMQConfig.Password,
-    Port = rabbitMQConfig.Port
+    Port = rabbitMQConfig.Port,
 };
 
 IConnection? connection = null;
@@ -34,7 +35,8 @@ for (int retry = 1; retry <= 5; retry++)
     }
     catch (Exception)
     {
-        if (retry == 5) throw;
+        if (retry == 5)
+            throw;
         var delay = TimeSpan.FromSeconds(Math.Pow(2, retry - 1));
         Thread.Sleep(delay);
     }
@@ -47,9 +49,10 @@ var channel = connection.CreateModel();
 
 // Declare exchange and queue
 channel.ExchangeDeclare(
-    exchange: RabbitMQConfig.TodosExchangeName,
+    exchange: RabbitMQConfig.AppExchangeName,
     type: ExchangeType.Topic,
-    durable: true);
+    durable: true
+);
 
 // Declare queues
 channel.QueueDeclare(
@@ -57,25 +60,29 @@ channel.QueueDeclare(
     durable: true,
     exclusive: false,
     autoDelete: false,
-    arguments: null);
+    arguments: null
+);
 
 channel.QueueDeclare(
     queue: QueueConfiguration.TodosQueueName,
     durable: true,
     exclusive: false,
     autoDelete: false,
-    arguments: null);
+    arguments: null
+);
 
 // Bind queues to exchange with routing keys
 channel.QueueBind(
     queue: QueueConfiguration.UsersQueueName,
-    exchange: RabbitMQConfig.TodosExchangeName,
-    routingKey: QueueConfiguration.RoutingKeys.UserEvents);
+    exchange: RabbitMQConfig.AppExchangeName,
+    routingKey: QueueConfiguration.RoutingKeys.UserEvents
+);
 
 channel.QueueBind(
     queue: QueueConfiguration.TodosQueueName,
-    exchange: RabbitMQConfig.TodosExchangeName,
-    routingKey: QueueConfiguration.RoutingKeys.TodoEvents);
+    exchange: RabbitMQConfig.AppExchangeName,
+    routingKey: QueueConfiguration.RoutingKeys.TodoEvents
+);
 
 builder.Services.AddSingleton<IModel>(channel);
 
