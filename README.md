@@ -19,14 +19,13 @@ This application uses RabbitMQ's Topic Exchange pattern with RPC (Remote Procedu
 **How it works:**
 
 1. The Web API publishes a message (e.g., `CreateUserMessage`) to the topic exchange with a specific routing key (e.g., `user.created`), along with `reply_to` queue and `correlation_id`.
-2. The Worker's queue, bound to the topic patterns (`user.*`, `todo.*`), receives matching messages. The Worker processes the request and sends a response to the `reply_to` queue.
+2. The Worker's queues, bound to the topic patterns (`user.*`, `todo.*`), receive matching messages. The Worker processes the request and sends a response to the `reply_to` queue.
 3. The Web API waits for and receives the response on its temporary queue, matching it by `correlation_id`.
 
 **Tradeoffs:**
 
-- Introduces blocking/waiting on the client side (Web API) for each request.
 - More complex than simple publish/subscribe: requires managing temp queues, correlation IDs, and timeouts.
-- Not as easy to trace/debug as HTTP APIs, and not RESTful.
+- Not as easy to trace/debug as RESTful APIs.
 
 **When to use:**
 
@@ -34,7 +33,7 @@ This application uses RabbitMQ's Topic Exchange pattern with RPC (Remote Procedu
 
 **When not to use:**
 
-- If you need low-latency, real-time synchronous responses, or simple, observable APIs (consider HTTP/gRPC instead).
+- If you need low-latency, real-time synchronous responses.
 
 ## Prerequisites
 
