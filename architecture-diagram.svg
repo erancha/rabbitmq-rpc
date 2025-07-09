@@ -19,14 +19,14 @@
   <text x="554.962" y="342.732" font-family="Arial" font-size="11" fill="#00bcd4" text-anchor="middle" style="white-space: pre; font-size: 11px;">Temp Queue</text>
   <text x="555.724" y="358.018" font-family="Arial" font-size="10" fill="#00bcd4" text-anchor="middle" style="white-space: pre; font-size: 10px;">(RPC Reply)</text>
   <line x1="120" y1="195" x2="200" y2="250" stroke="#212529" stroke-width="2" marker-end="url(#arrowhead)"/>
-  <text x="98.856" y="232.834" font-family="Arial" font-size="13" fill="#212529" style="white-space: pre; font-size: 13px;" transform="matrix(0.858044, 0, 0, 0.947369, -5.026559, 10.127757)">HTTP Request</text>
+  <text x="140" y="232.834" font-family="Arial" font-size="13" fill="#212529" style="white-space: pre; font-size: 13px;" transform="matrix(0.858044, 0, 0, 0.947369, -5.026559, 10.127757)">REST</text>
   <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px;" transform="matrix(0.989004, 0, 0, 1.030544, 144.427292, -108.875809)">(1) Request<tspan x="238.53199768066406" dy="1em">​</tspan>(2) reply_to<tspan x="238.53199768066406" dy="1em">​</tspan>(3) correlation_id</text>
   <line x1="359.289" y1="253.406" x2="499.943" y2="296.05" stroke-width="2" marker-end="url(#arrowhead)" style="stroke: rgb(212, 0, 100);"/>
   <text x="300" y="340" font-family="Arial" font-size="11" fill="#00bcd4" style="white-space: pre;"> </text>
   <line x1="877.903" y1="260.266" x2="599.815" y2="347.89" stroke-width="2" marker-end="url(#arrowhead)" style="stroke: rgb(6, 212, 0);"/>
   <text x="680.051" y="345.337" font-family="Arial" font-size="11" fill="#00bcd4" style="white-space: pre; font-size: 11px;"> </text>
   <line x1="897.675" y1="275.584" x2="900" y2="410.87" stroke="#6c757d" stroke-width="2" marker-end="url(#arrowhead)" style=""/>
-  <text x="860" y="370" font-family="Arial" font-size="12" fill="#6c757d" style="white-space: pre;">CRUD</text>
+  <text x="910" y="340" font-family="Arial" font-size="12" fill="#6c757d" style="white-space: pre;">CRUD</text>
   <line x1="505.922" y1="162.465" x2="280" y2="220" stroke="#6610f2" stroke-width="2" stroke-dasharray="5,5" style=""/>
   <line x1="628.576" y1="160.431" x2="883.331" y2="214.41" stroke="#6610f2" stroke-width="2" stroke-dasharray="5,5" style="transform-origin: 775.987px 196.897px;"/>
   <defs>
