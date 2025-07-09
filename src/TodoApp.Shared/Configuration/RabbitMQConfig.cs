@@ -7,5 +7,5 @@ public class RabbitMQConfig
     public string Password { get; set; } = "guest";
     public int Port { get; set; } = 5672;
 
-    public const string TodosExchangeName = "todos-exchange";
+    public const string AppExchangeName = "todo-app-exchange";
 }

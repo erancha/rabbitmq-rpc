@@ -5,3 +5,4 @@ src/TodoApp.WebApi/obj
 src/TodoApp.WorkerService/bin
 src/TodoApp.WorkerService/obj
 .config/dotnet-tools.json
+deploy/docker-compose.yml
