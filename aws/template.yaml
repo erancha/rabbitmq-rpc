@@ -1,0 +1,167 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Todo App Stack with EC2 instance running Docker Compose'
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: t4g.small
+    Description: EC2 instance type
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC where the EC2 instance will be launched
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet where the EC2 instance will be launched
+
+Resources:
+  TodoAppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Todo App
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 5000
+          ToPort: 5000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 5672
+          ToPort: 5672
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 15672
+          ToPort: 15672
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 0.0.0.0/0
+
+  TodoAppInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: ami-01424ec0ad897d99b # Amazon Linux 2023 ARM64 in eu-central-1
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !Ref TodoAppSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 10
+            VolumeType: gp3
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          # Update system and install dependencies
+          dnf update -y
+          dnf install -y docker git
+          systemctl start docker
+          systemctl enable docker
+
+          # Install docker-compose
+          curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          chmod +x /usr/local/bin/docker-compose
+
+          # Create app directory
+          mkdir -p /opt/todo-app
+          cd /opt/todo-app
+
+          # Create docker-compose.yml
+          cat > docker-compose.yml << 'EOL'
+          services:
+            webapi:
+              build:
+                context: .
+                dockerfile: ../src/TodoApp.WebApi/Dockerfile
+              ports:
+                - "5000:8080"
+              environment:
+                - ASPNETCORE_ENVIRONMENT=Production
+                - RabbitMQ__Host=rabbitmq
+                - RabbitMQ__Username=guest
+                - RabbitMQ__Password=guest
+              depends_on:
+                postgres:
+                  condition: service_healthy
+                rabbitmq:
+                  condition: service_healthy
+              restart: unless-stopped
+
+            worker:
+              build:
+                context: .
+                dockerfile: ../src/TodoApp.WorkerService/Dockerfile
+              environment:
+                - DOTNET_ENVIRONMENT=Production
+                - ConnectionStrings__DefaultConnection=Host=postgres;Database=tododb;Username=postgres;Password=postgres
+                - RabbitMQ__Host=rabbitmq
+                - RabbitMQ__Username=guest
+                - RabbitMQ__Password=guest
+              depends_on:
+                postgres:
+                  condition: service_healthy
+                rabbitmq:
+                  condition: service_healthy
+              restart: unless-stopped
+
+            postgres:
+              image: postgres:latest
+              environment:
+                - POSTGRES_DB=tododb
+                - POSTGRES_USER=postgres
+                - POSTGRES_PASSWORD=postgres
+              ports:
+                - "5432:5432"
+              volumes:
+                - postgres_data:/var/lib/postgresql/data
+                - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+              healthcheck:
+                test: ["CMD-SHELL", "pg_isready -U postgres"]
+                interval: 5s
+                timeout: 5s
+                retries: 5
+              restart: unless-stopped
+
+            rabbitmq:
+              image: rabbitmq:3-management
+              ports:
+                - "5672:5672"
+                - "15672:15672"
+              environment:
+                - RABBITMQ_DEFAULT_USER=guest
+                - RABBITMQ_DEFAULT_PASS=guest
+              healthcheck:
+                test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+                interval: 5s
+                timeout: 5s
+                retries: 5
+              restart: unless-stopped
+
+          volumes:
+            postgres_data:
+          EOL
+
+          # Clone the repository and start the application
+          git clone https://github.com/yourusername/rabbitmq-rpc.git .
+          /usr/local/bin/docker-compose up -d
+
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-TodoApp'
+
+Outputs:
+  InstancePublicIP:
+    Description: Public IP of the Todo App instance
+    Value: !GetAtt TodoAppInstance.PublicIp
+  WebApiEndpoint:
+    Description: Web API endpoint URL
+    Value: !Sub 'http://${TodoAppInstance.PublicDnsName}:5000'
+  RabbitMQManagement:
+    Description: RabbitMQ Management UI URL
+    Value: !Sub 'http://${TodoAppInstance.PublicDnsName}:15672'
