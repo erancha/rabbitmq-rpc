@@ -8,7 +8,7 @@
 - [Publishing Images](#publishing-images)
 - [Creating Deployment Configuration](#creating-deployment-configuration)
 - [Starting the application](#starting-the-application)
-  - [Services](#services)
+  * [Services](#services)
 
 <!-- tocstop -->
 
