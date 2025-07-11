@@ -9,6 +9,8 @@
   * [Technologies:](#technologies)
   * [Deliverables:](#deliverables)
 - [Architecture](#architecture)
+  * [RabbitMQ Communication Pattern](#rabbitmq-communication-pattern)
+  * [PostgreSQL Schema Design](#postgresql-schema-design)
 - [Prerequisites](#prerequisites)
 - [Running the Application](#running-the-application)
 - [Project Structure](#project-structure)
@@ -61,32 +63,65 @@ See the diagram for how the topic exchange routes messages to Workers' queues ba
 
 ![Todo App Architecture Diagram](architecture-diagram.svg)
 
-This application uses RabbitMQ's Topic Exchange pattern with RPC (Remote Procedure Call) for communication between the Web API and Worker services. Messages are published to a topic exchange (`todo-app-exchange`) with specific routing keys (e.g., `user.created`, `todo.updated`), and the Worker Service binds its queues to patterns (`user.*` and `todo.*`) to receive relevant messages. Each request includes a temporary reply queue and correlation ID for RPC communication, enabling the Worker to process requests and send responses back to the Web API.
+### RabbitMQ Communication Pattern
 
-**Why use RabbitMQ RPC?**
+This application uses RabbitMQ's Topic Exchange pattern with RPC (Remote Procedure Call) for communication between the Web API and Worker services. Messages are published to a topic exchange with specific routing keys, and the Worker Service binds its queues to patterns to receive relevant messages. Each request includes a temporary reply queue and correlation ID for RPC communication, enabling the Worker to process requests and send responses back to the Web API.
 
-- Extends the user-to-WebAPI request/response pattern by enabling similar synchronous-style communication between the WebAPI and Worker services, while maintaining the benefits of message-based decoupling.
-- Supports service decoupling, reliability, and load distribution.
-- Useful when you need guaranteed delivery, offline resilience, or want to avoid direct HTTP dependencies between services.
+**Key Concepts:**
 
-**How it works:**
+- **Exchange**: A topic exchange named `todo-app-exchange` routes messages based on routing keys
+- **Routing Keys**: Structured patterns (e.g., `user.created`, `todo.updated`) for message routing
+- **Queue Bindings**: Worker queues bound to patterns (`user.*`, `todo.*`) for message filtering
+- **RPC Implementation**: Uses temporary reply queues and correlation IDs for request-response patterns
 
-1. The Web API publishes a message (e.g., `CreateUserMessage`) to the topic exchange with a specific routing key (e.g., `user.created`), along with `reply_to` queue and `correlation_id`.
-2. The Worker's queues, bound to the topic patterns (`user.*`, `todo.*`), receive matching messages. The Worker processes the request and sends a response to the `reply_to` queue.
-3. The Web API waits for and receives the response on its temporary queue, matching it by `correlation_id`.
+**Error Handling & Reliability:**
 
-**Tradeoffs:**
+- Message persistence ensures durability across broker restarts (WebApi's [Program.cs](src/TodoApp.WebApi/Program.cs) and WorkerService's [Program.cs](src/TodoApp.WorkerService/Program.cs): `durable: true` in exchange and queue declarations)
+- Error handling with message acknowledgment ([UserMessageHandler.cs](src/TodoApp.WorkerService/Services/UserMessageHandler.cs) and [TodoItemMessageHandler.cs](src/TodoApp.WorkerService/Services/TodoItemMessageHandler.cs))
+- Automatic reconnection with exponential backoff ([Program.cs](src/TodoApp.WebApi/Program.cs) and [Program.cs](src/TodoApp.WorkerService/Program.cs): retry logic with exponential delay)
+- Timeout handling for RPC calls ([RabbitMQMessageService.cs](src/TodoApp.WebApi/Services/RabbitMQMessageService.cs): 10-second timeout for RPC responses)
 
-- More complex than simple publish/subscribe: requires managing temp queues, correlation IDs, and timeouts.
-- Not as easy to trace/debug as RESTful APIs.
+**When to Choose RabbitMQ's RPC Pattern:**
 
-**When to use:**
+- Need for service decoupling with request-response semantics
+- Requirements for guaranteed message delivery
+- Scenarios requiring offline resilience
+- Load distribution across multiple workers
 
-- When you need request-response over queues, want to decouple services, or require reliable delivery and load distribution.
+**Considerations:**
 
-**When not to use:**
+- Higher complexity compared to direct HTTP communication
+- Additional operational overhead for queue management
+- Potential debugging complexity in distributed scenarios
 
-- If you need low-latency, real-time synchronous responses.
+### PostgreSQL Schema Design
+
+The application uses a clean, normalized database schema implemented in PostgreSQL.
+The schema definitions can be found in [TodoApp.Shared/Models/](TodoApp.Shared/Models/) and migrations in [TodoApp.Shared/Migrations/](TodoApp.Shared/Migrations/).
+
+**Core Entities:**
+
+1. **User** ([TodoApp.Shared/Models/User.cs](TodoApp.Shared/Models/User.cs)):
+
+   - Primary key: `Id` (integer)
+   - Unique constraints: `Username`, `Email`
+   - Timestamps: `CreatedAt`
+   - One-to-many relationship with TodoItems
+
+2. **TodoItem** ([TodoApp.Shared/Models/TodoItem.cs](TodoApp.Shared/Models/TodoItem.cs)):
+   - Primary key: `Id` (integer)
+   - Foreign key: `UserId` (references User)
+   - Soft delete support: `IsDeleted`, `DeletedAt`
+   - Status tracking: `IsCompleted`, `CompletedAt`
+   - Timestamps: `CreatedAt`
+
+**Schema Characteristics:**
+
+- Minimal and focused tables with clear responsibilities
+- Proper foreign key constraints for referential integrity
+- Soft delete pattern for data retention
+- Timestamp fields for audit tracking
+- Unique constraints to maintain data integrity
 
 ## Prerequisites
 
