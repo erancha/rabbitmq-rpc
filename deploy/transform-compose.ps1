@@ -22,4 +22,4 @@ $transformedCompose = $transformedCompose -replace
 $transformedCompose | Set-Content -Path "docker-compose.yml"
 
 Write-Host "Created deployment docker-compose.yml with Docker Hub images in the deploy folder"
-Write-Host "You can now share ${PSScriptRoot}\docker-compose.yml"
+Write-Host "You can now execute 'docker-compose up' or share ${PSScriptRoot}\docker-compose.yml"

@@ -36,9 +36,9 @@ if (-not $engineReady) {
     exit 1
 }
 
-# Check for Docker
 Write-Host 'Checking dependencies...' -ForegroundColor Cyan
 
+# Check for Docker
 try {
     $dockerVersion = (docker --version) | Out-String
     Write-Host ('✓ Docker is installed: ' + $dockerVersion.Trim()) -ForegroundColor Green
@@ -64,15 +64,28 @@ try {
     Write-Host ('✓ .NET SDK is installed: ' + $dotnetVersion.Trim()) -ForegroundColor Green
 } catch {
     Write-Host 'Error: .NET SDK is not installed.' -ForegroundColor Red
-    Write-Host 'Please install .NET 9.0 SDK from https://dotnet.microsoft.com/download/dotnet/9.0' -ForegroundColor Yellow
+    Write-Host 'Please install .NET 8.0 SDK from https://dotnet.microsoft.com/download/dotnet/8.0' -ForegroundColor Yellow
     exit 1
 }
+
+# Set consistent project name
+$env:COMPOSE_PROJECT_NAME = "todo-app"
 
 # Start the application
 Write-Host "`nStarting the Todo application..." -ForegroundColor Cyan
 
+# Check for --no-cache flag
+$buildFlags = "--build"
+if ($args -contains "--no-cache") {
+    Write-Host "Starting services with no cache..." -ForegroundColor Yellow
+    $buildFlags = "--build --no-cache"
+} else {
+    Write-Host "Starting services..." -ForegroundColor Yellow
+}
+
 try {
-    docker-compose up --build
+    docker-compose up $buildFlags -d
+    docker-compose logs -f
 } catch {
     Write-Host 'Error starting the application.' -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red

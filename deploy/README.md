@@ -1,18 +1,30 @@
 # Deployment Instructions
 
+## Table of Contents
+
+<!-- toc -->
+
+- [Prerequisites](#prerequisites)
+- [Publishing Images](#publishing-images)
+- [Creating Deployment Configuration](#creating-deployment-configuration)
+- [Starting the application](#starting-the-application)
+  - [Services](#services)
+
+<!-- tocstop -->
+
 This folder contains the deployment configuration for the Todo application with RabbitMQ RPC.
 
 ## Prerequisites
 
 - Docker and Docker Compose installed
-- PowerShell (for running the scripts)
+- PowerShell or bash (for running the scripts)
 - Docker Hub account
 
 ## Publishing Images
 
 1. Login to Docker Hub:
 
-```bash
+```powershell
 docker login
 ```
 
@@ -40,11 +52,13 @@ Optionally, you can specify a custom tag:
 
 3. Start the application:
 
-```bash
+## Starting the application
+
+```powershell
 docker-compose up -d
 ```
 
-## Services
+### Services
 
 The application consists of:
 
@@ -52,7 +66,3 @@ The application consists of:
 - Worker Service
 - RabbitMQ (available on localhost:**5672**) and [Management UI](http://localhost:15672) (available on localhost:**15672**)
 - PostgreSQL (available on localhost:**5432**)
-
-## Environment Variables
-
-All necessary environment variables are configured in the docker-compose.yml file.
