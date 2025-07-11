@@ -9,10 +9,10 @@ param(
     [string]$StackName,
     
     [Parameter(Mandatory = $true)]
-    [string]$DockerHubUsername
+    [string]$DockerHubUsername,
     
-    # [Parameter(Mandatory=$false)]
-    # [string]$InstanceType = "t4g.small"
+    [Parameter(Mandatory = $false)]
+    [string]$InstanceType
 )
 
 if (Test-Path "$PSScriptRoot/aws-configure.ps1") {
@@ -41,18 +41,8 @@ if (-not (Test-Path $templatePath)) {
 }
 
 if (-not (Test-Path $dockerComposePath)) {
-    Write-Host "docker-compose.yml not found at: $dockerComposePath, attempting to transform..." -ForegroundColor Yellow
-    $transformScript = Join-Path $PSScriptRoot "..\deploy\transform-compose.ps1"
-    if (Test-Path $transformScript) {
-        & $transformScript -DockerHubUsername $DockerHubUsername
-        if (-not (Test-Path $dockerComposePath)) {
-            Write-Host "Error: docker-compose.yml still not found after transformation at: $dockerComposePath" -ForegroundColor Red
-            exit 1
-        }
-    } else {
-        Write-Host "Error: transform-compose.ps1 not found at: $transformScript" -ForegroundColor Red
-        exit 1
-    }
+    Write-Host "docker-compose.yml not found at: $dockerComposePath !" -ForegroundColor Yellow
+    exit 1
 }
 
 # Read docker-compose content
@@ -62,17 +52,16 @@ $dockerComposeContent = Get-Content -Path $dockerComposePath -Raw
 $tempTemplatePath = Join-Path $PSScriptRoot "template.tmp.yaml"
 $templateContent = Get-Content -Path $templatePath -Raw
 
-# Process docker-compose content - add 10 spaces indentation to match CloudFormation YAML structure
+# Process docker-compose content with proper indentation
 $lines = $dockerComposeContent -split "`n"
-$indentedLines = $lines | ForEach-Object { 
+$processedLines = $lines | ForEach-Object { 
     $line = $_.TrimEnd()  # Remove trailing whitespace
     if ($line) {
-        # Escape backticks with another backtick
-        $line = $line -replace '`', '``'
-        "          $line"
+        # Add proper indentation (10 base + 2 for each level)
+        "          $line".PadLeft("          $line".Length + 2)
     } else { "" }
 }
-$processedContent = $indentedLines -join "`n"
+$processedContent = $processedLines -join "`n"
 $processedContent = $processedContent.TrimEnd()  # Remove any trailing newlines
 
 # Replace the placeholder with the processed content
@@ -82,7 +71,14 @@ Set-Content -Path $tempTemplatePath -Value $templateContent
 # Validate the template
 Write-Host "`nValidating CloudFormation template..." -ForegroundColor Cyan
 try {
-    aws cloudformation validate-template --template-body file://$tempTemplatePath
+    $validationOutput = aws cloudformation validate-template --template-body file://$tempTemplatePath 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Template validation failed:" -ForegroundColor Red
+        Write-Host $validationOutput -ForegroundColor Red
+        Write-Host "`nGenerated template content:" -ForegroundColor Yellow
+        Get-Content -Path $tempTemplatePath
+        exit 1
+    }
     Write-Host "Template validation successful" -ForegroundColor Green
 } catch {
     Write-Host "Template validation failed: $_" -ForegroundColor Red
@@ -127,8 +123,16 @@ try {
         Write-Host "$($output.OutputKey): $($output.OutputValue)" -ForegroundColor Yellow
     }
 
-    # Cleanup temporary template
-    # Remove-Item -Path $tempTemplatePath -Force
+    Write-Host "`nTo check deployment status, run these commands on the EC2 instance:" -ForegroundColor Cyan
+    Write-Host "sudo su -" -ForegroundColor Yellow                                      # Switch to super user
+    Write-Host "systemctl status docker" -ForegroundColor Yellow                        # Check if Docker service is running and enabled
+    Write-Host "docker version" -ForegroundColor Yellow                                 # Verify Docker Engine version and connectivity
+    Write-Host "docker compose version" -ForegroundColor Yellow                         # Confirm Docker Compose is installed correctly
+    Write-Host "docker ps" -ForegroundColor Yellow                                      # List all running containers
+    Write-Host "cd /opt/$StackName && docker compose ps" -ForegroundColor Yellow        # List compose containers
+    Write-Host "cd /opt/$StackName && docker compose logs -f" -ForegroundColor Yellow   # View container logs in real-time
+    Write-Host "cat /var/log/cloud-init-output.log" -ForegroundColor Yellow             # View EC2 instance initialization logs
+    Write-Host "netstat -tulpn | grep -E '5000|5672|15672'" -ForegroundColor Yellow     # Check if required ports are listening
 }
 catch {
     Write-Host "Error deploying CloudFormation stack:" -ForegroundColor Red

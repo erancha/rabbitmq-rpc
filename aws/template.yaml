@@ -11,7 +11,7 @@ Parameters:
   InstanceType:
     Description: EC2 instance type
     Type: String
-    Default: t4g.small
+    Default: t3.nano
 
 Resources:
   TodoAppSecurityGroup:
@@ -45,7 +45,7 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: !Ref InstanceType
-      ImageId: ami-01424ec0ad897d99b # Amazon Linux 2023 ARM64 in eu-central-1
+      ImageId: ami-0122fd36a4f50873a # Amazon Linux 2023 x86_64 in eu-central-1
       SubnetId: !Ref SubnetId
       SecurityGroupIds:
         - !Ref TodoAppSecurityGroup
@@ -56,34 +56,119 @@ Resources:
             VolumeType: gp3
             DeleteOnTermination: true
       UserData:
-        Fn::Base64: |
+        Fn::Base64: !Sub |
           #!/bin/bash
+          set -e  # Exit on any error
+          exec 1> >(logger -s -t $(basename $0)) 2>&1  # Send stdout and stderr to syslog
+
+          echo "[$(date)] Starting user data script execution..."
+
+          # Update system
+          echo "[$(date)] Updating system packages..."
           dnf update -y
-          dnf install -y docker git docker-compose-plugin
+
+          # Install Docker
+          echo "[$(date)] Installing Docker..."
+          dnf install -y docker.x86_64
+          if [ $? -ne 0 ]; then
+              echo "[$(date)] Error: Failed to install Docker"
+              exit 1
+          fi
+
+          # Start Docker service
+          echo "[$(date)] Starting Docker service..."
           systemctl start docker
           systemctl enable docker
+          sleep 5  # Give Docker some time to start
+
+          # Verify Docker service
+          echo "[$(date)] Verifying Docker service..."
+          if ! systemctl is-active --quiet docker; then
+              echo "[$(date)] Error: Docker service is not running"
+              systemctl status docker
+              exit 1
+          fi
+
+          # Install Docker Compose plugin
+          echo "[$(date)] Installing Docker Compose plugin..."
+          mkdir -p /usr/local/lib/docker/cli-plugins
+          curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m) -o /usr/local/lib/docker/cli-plugins/docker-compose
+          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+          # Verify Docker is responding
+          echo "[$(date)] Verifying Docker daemon..."
+          timeout 30 bash -c 'until docker info >/dev/null 2>&1; do sleep 2; done'
+          if [ $? -ne 0 ]; then
+              echo "[$(date)] Error: Docker is not responding after 30 seconds"
+              docker info
+              exit 1
+          fi
+
+          # Add ec2-user to docker group
+          echo "[$(date)] Adding ec2-user to docker group..."
           usermod -aG docker ec2-user
-          
-          mkdir -p /opt/todo-app
-          cd /opt/todo-app
-          
+
+          # Prepare application directory
+          STACK_NAME="${AWS::StackName}"
+          echo "[$(date)] Setting up application directory for stack: $STACK_NAME"
+          mkdir -p "/opt/$STACK_NAME"
+          cd "/opt/$STACK_NAME" || exit 1
+
+          echo "[$(date)] Creating docker-compose.yml..."
           cat > docker-compose.yml << 'EOF'
 <docker-compose-content>
           EOF
-          
-          docker compose up -d
+
+          # Verify docker-compose.yml was created
+          if [ ! -f docker-compose.yml ]; then
+              echo "[$(date)] Error: docker-compose.yml was not created"
+              exit 1
+          fi
+
+          echo "[$(date)] Starting containers..."
+          docker compose -f docker-compose.yml up -d
+          if [ $? -ne 0 ]; then
+              echo "[$(date)] Error: Failed to start containers"
+              docker compose logs
+              exit 1
+          fi
+
+          # Wait for containers to be ready
+          echo "[$(date)] Waiting for containers to be ready..."
+          TIMEOUT=120
+          INTERVAL=5
+          ELAPSED=0
+
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+              if docker compose ps --services | xargs -I {} docker compose ps --format json {} | grep -q "running"; then
+                  echo "[$(date)] All containers are running"
+                  break
+              fi
+              sleep $INTERVAL
+              ELAPSED=$((ELAPSED + INTERVAL))
+              echo "[$(date)] Still waiting for containers... ($ELAPSED/$TIMEOUT seconds)"
+          done
+
+          if [ $ELAPSED -ge $TIMEOUT ]; then
+              echo "[$(date)] Error: Containers failed to start within $TIMEOUT seconds"
+              docker compose logs
+              exit 1
+          fi
+
+          echo "[$(date)] Deployment completed successfully!"
+          docker compose ps
 
       Tags:
         - Key: Name
-          Value: !Join ['-', [!Ref 'AWS::StackName', 'TodoApp']]
+          Value: !Ref 'AWS::StackName'
 
 Outputs:
-  InstancePublicIP:
-    Description: Public IP of the Todo App instance
-    Value: !GetAtt TodoAppInstance.PublicIp
   WebApiEndpoint:
     Description: Web API endpoint URL
     Value: !Sub 'http://${TodoAppInstance.PublicDnsName}:5000'
   RabbitMQManagement:
     Description: RabbitMQ Management UI URL
     Value: !Sub 'http://${TodoAppInstance.PublicDnsName}:15672'
+  # InstancePublicIP:
+  #   Description: Public IP of the Todo App instance
+  #   Value: !GetAtt TodoAppInstance.PublicIp
