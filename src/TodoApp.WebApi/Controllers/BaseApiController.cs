@@ -50,6 +50,7 @@ public abstract class BaseApiController : ControllerBase
         {
             "NOT_FOUND" => StatusCodes.Status404NotFound,
             "VALIDATION" => StatusCodes.Status400BadRequest,
+            "TEMPORARY_UNAVAILABLE" => StatusCodes.Status503ServiceUnavailable,
             _ => StatusCodes.Status500InternalServerError,
         };
 
