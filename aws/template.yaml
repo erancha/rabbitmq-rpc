@@ -1,5 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Todo App Stack with EC2 instance running Docker Compose'
+Description: |
+  Todo App Stack with EC2 instance running Docker Compose via S3-based initialization.
+  The EC2 instance downloads initialization scripts from S3 to set up the environment.
 
 Parameters:
   VpcId:
@@ -11,9 +13,65 @@ Parameters:
   InstanceType:
     Description: EC2 instance type
     Type: String
-    Default: t3.nano
+    Default: t3.micro  # t3.nano (0.5GB) is insufficient - containers need ~210MB, system needs ~420MB
 
 Resources:
+  # Deployment Flow:
+  # 1. CloudFormation creates:
+  #    - S3 bucket for initialization assets
+  #    - IAM role for EC2 with S3 read access
+  #    - EC2 instance with minimal user-data
+  #
+  # 2. Initial User-Data (minimal, in CloudFormation)
+  #    └─> Downloads docker-compose-setup.sh from S3
+  #        └─> docker-compose-setup.sh (does everything):
+  #            - Downloads docker-compose.yml from S3
+  #            - Installs Docker & dependencies
+  #            - Runs docker-compose up
+  #
+  # Note: The docker-compose-setup execution is initially commented out to allow manual testing via EC2 connect.
+
+  InitializationBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub ${InitializationBucket.Arn}/*
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2InstanceRole
+
   TodoAppSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -49,126 +107,70 @@ Resources:
       SubnetId: !Ref SubnetId
       SecurityGroupIds:
         - !Ref TodoAppSecurityGroup
+      IamInstanceProfile: !Ref EC2InstanceProfile
       BlockDeviceMappings:
         - DeviceName: /dev/xvda
           Ebs:
             VolumeSize: 10
             VolumeType: gp3
             DeleteOnTermination: true
-      UserData:
+      UserData: # Logs go to: (1) /var/log/user-data.log (2) syslog via logger command
         Fn::Base64: !Sub |
           #!/bin/bash
-          set -e  # Exit on any error
-          exec 1> >(logger -s -t $(basename $0)) 2>&1  # Send stdout and stderr to syslog
+          # Redirect output to log file
+          exec 1> /var/log/user-data.log 2>&1
+          # Also send to syslog
+          exec 1> >(logger -s -t $(basename $0)) 2>&1
 
-          echo "[$(date)] Starting user data script execution..."
+          echo "[$(date)] Starting minimal user data script..."
 
-          # Update system
-          echo "[$(date)] Updating system packages..."
-          dnf update -y
+          echo "[$(date)] Installing AWS CLI..."
+          dnf install -y aws-cli
 
-          # Install Docker
-          echo "[$(date)] Installing Docker..."
-          dnf install -y docker.x86_64
-          if [ $? -ne 0 ]; then
-              echo "[$(date)] Error: Failed to install Docker"
-              exit 1
-          fi
+          echo "[$(date)] Downloading and running initialization script..."
+          echo "Starting: aws s3 cp s3://${InitializationBucket}/docker-compose-setup.sh /tmp/docker-compose-setup.sh && chmod +x /tmp/docker-compose-setup.sh && INIT_BUCKET=${InitializationBucket} STACK_NAME=${AWS::StackName} /tmp/docker-compose-setup.sh"
 
-          # Start Docker service
-          echo "[$(date)] Starting Docker service..."
-          systemctl start docker
-          systemctl enable docker
-          sleep 5  # Give Docker some time to start
+          # Retry S3 access with exponential backoff and longer initial delay
+          max_attempts=10
+          attempt=1
+          success=false
+          initial_delay=10  # Start with a 10 second delay
 
-          # Verify Docker service
-          echo "[$(date)] Verifying Docker service..."
-          if ! systemctl is-active --quiet docker; then
-              echo "[$(date)] Error: Docker service is not running"
-              systemctl status docker
-              exit 1
-          fi
-
-          # Install Docker Compose plugin
-          echo "[$(date)] Installing Docker Compose plugin..."
-          mkdir -p /usr/local/lib/docker/cli-plugins
-          curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m) -o /usr/local/lib/docker/cli-plugins/docker-compose
-          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-
-          # Verify Docker is responding
-          echo "[$(date)] Verifying Docker daemon..."
-          timeout 30 bash -c 'until docker info >/dev/null 2>&1; do sleep 2; done'
-          if [ $? -ne 0 ]; then
-              echo "[$(date)] Error: Docker is not responding after 30 seconds"
-              docker info
-              exit 1
-          fi
-
-          # Add ec2-user to docker group
-          echo "[$(date)] Adding ec2-user to docker group..."
-          usermod -aG docker ec2-user
-
-          # Prepare application directory
-          STACK_NAME="${AWS::StackName}"
-          echo "[$(date)] Setting up application directory for stack: $STACK_NAME"
-          mkdir -p "/opt/$STACK_NAME"
-          cd "/opt/$STACK_NAME" || exit 1
-
-          echo "[$(date)] Creating docker-compose.yml..."
-          cat > docker-compose.yml << 'EOF'
-<docker-compose-content>
-          EOF
-
-          # Verify docker-compose.yml was created
-          if [ ! -f docker-compose.yml ]; then
-              echo "[$(date)] Error: docker-compose.yml was not created"
-              exit 1
-          fi
-
-          echo "[$(date)] Starting containers..."
-          docker compose -f docker-compose.yml up -d
-          if [ $? -ne 0 ]; then
-              echo "[$(date)] Error: Failed to start containers"
-              docker compose logs
-              exit 1
-          fi
-
-          # Wait for containers to be ready
-          echo "[$(date)] Waiting for containers to be ready..."
-          TIMEOUT=120
-          INTERVAL=5
-          ELAPSED=0
-
-          while [ $ELAPSED -lt $TIMEOUT ]; do
-              if docker compose ps --services | xargs -I {} docker compose ps --format json {} | grep -q "running"; then
-                  echo "[$(date)] All containers are running"
-                  break
-              fi
-              sleep $INTERVAL
-              ELAPSED=$((ELAPSED + INTERVAL))
-              echo "[$(date)] Still waiting for containers... ($ELAPSED/$TIMEOUT seconds)"
+          while [ $attempt -le $max_attempts ]; do
+            echo "[$(date)] Attempt $attempt of $max_attempts to access S3..."
+            if aws s3 cp s3://${InitializationBucket}/docker-compose-setup.sh /tmp/docker-compose-setup.sh; then
+              chmod +x /tmp/docker-compose-setup.sh
+              INIT_BUCKET=${InitializationBucket} STACK_NAME=${AWS::StackName} /tmp/docker-compose-setup.sh
+              success=true
+              break
+            fi
+            
+            sleep_time=$((initial_delay * 2 ** (attempt - 1)))
+            echo "[$(date)] Waiting $sleep_time seconds before next attempt..."
+            sleep $sleep_time
+            ((attempt++))
           done
 
-          if [ $ELAPSED -ge $TIMEOUT ]; then
-              echo "[$(date)] Error: Containers failed to start within $TIMEOUT seconds"
-              docker compose logs
-              exit 1
+          if [ "$success" = false ]; then
+            echo "[$(date)] WARNING: Failed to access S3 after $max_attempts attempts. Instance will start but initialization is incomplete."
+            exit 1
           fi
 
-          echo "[$(date)] Deployment completed successfully!"
-          docker compose ps
+          # Now that we have the initialization script, we can enable strict error checking
+          set -e
 
+          echo "[$(date)] Initialization completed."
       Tags:
         - Key: Name
           Value: !Ref 'AWS::StackName'
 
 Outputs:
+  InitializationBucketName:
+    Description: Name of the S3 bucket containing initialization files
+    Value: !Ref InitializationBucket
   WebApiEndpoint:
     Description: Web API endpoint URL
     Value: !Sub 'http://${TodoAppInstance.PublicDnsName}:5000'
   RabbitMQManagement:
     Description: RabbitMQ Management UI URL
     Value: !Sub 'http://${TodoAppInstance.PublicDnsName}:15672'
-  # InstancePublicIP:
-  #   Description: Public IP of the Todo App instance
-  #   Value: !GetAtt TodoAppInstance.PublicIp

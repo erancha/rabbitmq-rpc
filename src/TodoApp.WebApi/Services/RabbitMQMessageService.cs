@@ -1,9 +1,12 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using TodoApp.Shared.Configuration;
 using TodoApp.Shared.Models;
+using TodoApp.WebApi.Configuration;
 
 namespace TodoApp.WebApi.Services;
 
@@ -43,10 +46,18 @@ public interface IRabbitMQMessageService
 public class RabbitMQMessageService : IRabbitMQMessageService
 {
     private readonly IModel _channel;
+    private readonly ILogger<RabbitMQMessageService> _logger;
+    private readonly WebApiConfig _config;
 
-    public RabbitMQMessageService(IModel channel)
+    public RabbitMQMessageService(
+        IModel channel,
+        ILogger<RabbitMQMessageService> logger,
+        IOptions<WebApiConfig> config
+    )
     {
         _channel = channel;
+        _logger = logger;
+        _config = config.Value;
     }
 
     public void PublishMessage<T>(T message, string routingKey)
@@ -88,10 +99,27 @@ public class RabbitMQMessageService : IRabbitMQMessageService
             );
 #endif
             var response = Encoding.UTF8.GetString(ea.Body.ToArray());
+            if (_config.EnableRequestLogging)
+            {
+                _logger.LogInformation(
+                    "Received RPC response for message type {MessageType} with correlation ID {CorrelationId}",
+                    typeof(T).Name,
+                    correlationId
+                );
+            }
             tcs.SetResult(response);
         };
 
         _channel.BasicConsume(consumer: consumer, queue: replyQueueName, autoAck: true);
+
+        if (_config.EnableRequestLogging)
+        {
+            _logger.LogInformation(
+                "Sending RPC request for message type {MessageType} with correlation ID {CorrelationId}",
+                typeof(T).Name,
+                correlationId
+            );
+        }
 
         _channel.BasicPublish(
             exchange: RabbitMQConfig.AppExchangeName,
@@ -100,10 +128,33 @@ public class RabbitMQMessageService : IRabbitMQMessageService
             body: body
         );
 
-        // Wait for the response (with timeout for safety)
-        tcs.Task.Wait(TimeSpan.FromSeconds(10));
-        var response = tcs.Task.Result;
-        return JsonSerializer.Deserialize<RpcResponse>(response)
+        var timeoutTask = Task.Delay(TimeSpan.FromSeconds(_config.RpcTimeoutSeconds));
+        var completedTask = Task.WhenAny(tcs.Task, timeoutTask).Result;
+
+        if (completedTask == timeoutTask)
+        {
+            if (_config.EnableRequestLogging)
+            {
+                _logger.LogWarning(
+                    "RPC request timed out after {TimeoutSeconds} seconds. Request will be processed when worker service recovers",
+                    _config.RpcTimeoutSeconds
+                );
+            }
+
+            return new RpcResponse
+            {
+                Success = false,
+                Error = new RpcError
+                {
+                    Kind = "TEMPORARY_UNAVAILABLE",
+                    Message =
+                        $"Service is temporarily unavailable (timeout: {_config.RpcTimeoutSeconds}s). Your request is queued and will be processed when the system recovers",
+                },
+            };
+        }
+
+        var responseJson = tcs.Task.Result;
+        return JsonSerializer.Deserialize<RpcResponse>(responseJson)!
             ?? new RpcResponse
             {
                 Success = false,
