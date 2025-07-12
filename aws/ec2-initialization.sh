@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Log everything to file and console
-exec 1> >(tee -a /var/log/docker-compose-setup.log) 2>&1
+exec 1> >(tee -a /var/log/ec2-initialization.log) 2>&1
 
 echo "[$(date)] Starting initialization script..."
 
@@ -79,5 +79,3 @@ echo -e "\nDisk Space:"
 df -h
 echo -e "\nContainer Resource Usage:"
 docker stats --no-stream
-
-

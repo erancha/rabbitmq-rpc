@@ -13,7 +13,7 @@ Parameters:
   InstanceType:
     Description: EC2 instance type
     Type: String
-    Default: t3.micro  # t3.nano (0.5GB) is insufficient - containers need ~210MB, system needs ~420MB
+    Default: t3.micro # t3.nano (0.5GB) is insufficient - containers need ~210MB, system needs ~420MB
 
 Resources:
   # Deployment Flow:
@@ -23,13 +23,13 @@ Resources:
   #    - EC2 instance with minimal user-data
   #
   # 2. Initial User-Data (minimal, in CloudFormation)
-  #    └─> Downloads docker-compose-setup.sh from S3
-  #        └─> docker-compose-setup.sh (does everything):
+  #    └─> Downloads ec2-initialization.sh from S3
+  #        └─> ec2-initialization.sh (does everything):
   #            - Downloads docker-compose.yml from S3
   #            - Installs Docker & dependencies
   #            - Runs docker-compose up
   #
-  # Note: The docker-compose-setup execution is initially commented out to allow manual testing via EC2 connect.
+  # Note: The ec2-initialization script execution is initially commented out to allow manual testing via EC2 connect.
 
   InitializationBucket:
     Type: AWS::S3::Bucket
@@ -114,11 +114,11 @@ Resources:
             VolumeSize: 10
             VolumeType: gp3
             DeleteOnTermination: true
-      UserData: # Logs go to: (1) /var/log/user-data.log (2) syslog via logger command
+      UserData: # Logs go to: (1) /var/log/ec2-initialization.log (2) syslog via logger command
         Fn::Base64: !Sub |
           #!/bin/bash
           # Redirect output to log file
-          exec 1> /var/log/user-data.log 2>&1
+          exec 1> /var/log/ec2-initialization.log 2>&1
           # Also send to syslog
           exec 1> >(logger -s -t $(basename $0)) 2>&1
 
@@ -128,7 +128,7 @@ Resources:
           dnf install -y aws-cli
 
           echo "[$(date)] Downloading and running initialization script..."
-          echo "Starting: aws s3 cp s3://${InitializationBucket}/docker-compose-setup.sh /tmp/docker-compose-setup.sh && chmod +x /tmp/docker-compose-setup.sh && INIT_BUCKET=${InitializationBucket} STACK_NAME=${AWS::StackName} /tmp/docker-compose-setup.sh"
+          echo "Starting: aws s3 cp s3://${InitializationBucket}/ec2-initialization.sh /usr/local/bin/ec2-initialization.sh && chmod +x /usr/local/bin/ec2-initialization.sh && INIT_BUCKET=${InitializationBucket} STACK_NAME=${AWS::StackName} /usr/local/bin/ec2-initialization.sh"
 
           # Retry S3 access with exponential backoff and longer initial delay
           max_attempts=10
@@ -138,9 +138,9 @@ Resources:
 
           while [ $attempt -le $max_attempts ]; do
             echo "[$(date)] Attempt $attempt of $max_attempts to access S3..."
-            if aws s3 cp s3://${InitializationBucket}/docker-compose-setup.sh /tmp/docker-compose-setup.sh; then
-              chmod +x /tmp/docker-compose-setup.sh
-              INIT_BUCKET=${InitializationBucket} STACK_NAME=${AWS::StackName} /tmp/docker-compose-setup.sh
+            if aws s3 cp s3://${InitializationBucket}/ec2-initialization.sh /usr/local/bin/ec2-initialization.sh; then
+              chmod +x /usr/local/bin/ec2-initialization.sh
+              INIT_BUCKET=${InitializationBucket} STACK_NAME=${AWS::StackName} /usr/local/bin/ec2-initialization.sh
               success=true
               break
             fi

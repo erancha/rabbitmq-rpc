@@ -92,7 +92,17 @@ try {
             "ParameterKey=InstanceType,ParameterValue=$InstanceType",
             "--capabilities", "CAPABILITY_IAM"
         )
-        aws cloudformation update-stack @params
+        $updateOutput = aws cloudformation update-stack @params 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $updateInitiated = $true
+        } elseif ($updateOutput -like "*No updates are to be performed*") {
+            Write-Host "No updates needed for stack '$StackName'. Continuing..." -ForegroundColor Green
+            $updateInitiated = $false
+        } else {
+            Write-Host "Error updating stack:" -ForegroundColor Red
+            Write-Host $updateOutput -ForegroundColor Red
+            exit 1
+        }
     }
     else {
         # Create new stack
@@ -101,10 +111,11 @@ try {
     }
 
     # Wait for stack to complete
-    Write-Host "Waiting for stack operation to complete..." -ForegroundColor Cyan
-    if ($stackExists) {
+    if ($stackExists -and $updateInitiated) {
+        Write-Host "Waiting for stack update to complete..." -ForegroundColor Cyan
         aws cloudformation wait stack-update-complete --stack-name $StackName
-    } else {
+    } elseif (-not $stackExists) {
+        Write-Host "Waiting for stack creation to complete..." -ForegroundColor Cyan
         aws cloudformation wait stack-create-complete --stack-name $StackName
     }
     
@@ -116,13 +127,13 @@ try {
     if ($bucketName) {
         Write-Host "`nUploading initialization files to S3 bucket: $bucketName" -ForegroundColor Cyan
         Write-Host "aws s3 cp $dockerComposePath s3://$bucketName/docker-compose.yml" -ForegroundColor Gray
-        Write-Host "aws s3 cp $PSScriptRoot/docker-compose-setup.sh s3://$bucketName/docker-compose-setup.sh" -ForegroundColor Gray
+        Write-Host "aws s3 cp $PSScriptRoot/ec2-initialization.sh s3://$bucketName/ec2-initialization.sh" -ForegroundColor Gray
 
-        aws s3 cp $dockerComposePath "s3://$bucketName/docker-compose.yml" 
-        aws s3 cp "$PSScriptRoot/docker-compose-setup.sh" "s3://$bucketName/docker-compose-setup.sh"
+        aws s3 cp "$dockerComposePath" "s3://$bucketName/docker-compose.yml"
+        aws s3 cp "$PSScriptRoot/ec2-initialization.sh" "s3://$bucketName/ec2-initialization.sh"
 
         Write-Host "`nTo manually run initialization on EC2, switch to super user and:" -ForegroundColor Cyan
-        Write-Host "aws s3 cp s3://$bucketName/docker-compose-setup.sh /tmp/docker-compose-setup.sh && chmod +x /tmp/docker-compose-setup.sh && INIT_BUCKET=$bucketName STACK_NAME=$StackName /tmp/docker-compose-setup.sh" -ForegroundColor Gray
+        Write-Host "aws s3 cp s3://$bucketName/ec2-initialization.sh /usr/local/bin/ec2-initialization.sh && chmod +x /usr/local/bin/ec2-initialization.sh && INIT_BUCKET=$bucketName STACK_NAME=$StackName /usr/local/bin/ec2-initialization.sh" -ForegroundColor Gray
     }
 
     Write-Host "`nDeployment completed successfully!" -ForegroundColor Green
@@ -132,6 +143,7 @@ try {
     }
 
     Write-Host "`nTo check deployment status, run these commands on the EC2 instance:" -ForegroundColor Cyan
+    Write-Host "cat /var/log/cloud-init-output.log" -ForegroundColor Yellow             # View EC2 instance initialization logs
     Write-Host "sudo su -" -ForegroundColor Yellow                                      # Switch to super user
     Write-Host "systemctl status docker" -ForegroundColor Yellow                        # Check if Docker service is running and enabled
     Write-Host "docker version" -ForegroundColor Yellow                                 # Verify Docker Engine version and connectivity
@@ -140,8 +152,7 @@ try {
     Write-Host "cd /opt/$StackName && docker compose ps" -ForegroundColor Yellow        # List compose containers
     Write-Host "cd /opt/$StackName && docker compose logs -f" -ForegroundColor Yellow   # View container logs in real-time
     Write-Host "cd /opt/$StackName && docker compose logs postgres -f" -ForegroundColor Yellow   # View PostgreSQL logs specifically
-    Write-Host "cat /var/log/cloud-init-output.log" -ForegroundColor Yellow             # View EC2 instance initialization logs
-    Write-Host "netstat -tulpn | grep -E '5000|5672|15672'" -ForegroundColor Yellow     # Check if required ports are listening
+    Write-Host "cd /opt/$StackName && docker compose logs 2>&1 | grep -i -E 'warn|error|exception|fail'" -ForegroundColor Yellow   # Check for warnings and errors in all containers
 
     Write-Host "`nTo monitor system resources:" -ForegroundColor Cyan
     Write-Host "top -b -n 1" -ForegroundColor Yellow                                    # CPU and memory usage snapshot
