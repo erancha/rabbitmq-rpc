@@ -4,7 +4,8 @@ src/TodoApp.WebApi/bin
 src/TodoApp.WebApi/obj
 src/TodoApp.WorkerService/bin
 src/TodoApp.WorkerService/obj
+README-toc.cmd
 .config/dotnet-tools.json
 aws/aws-configure.ps1
 aws/test-deploy.ps1
-README-toc.cmd
+aws/test-deploy.sh
