@@ -22,10 +22,6 @@ public class TodoDbContext : DbContext
             entity.HasIndex(e => e.Username).IsUnique();
             entity.HasIndex(e => e.Email).IsUnique();
             entity.Property(e => e.Email).IsRequired();
-            entity.HasMany(e => e.Items)
-                  .WithOne(e => e.User)
-                  .HasForeignKey(e => e.UserId)
-                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<TodoItem>(entity =>
@@ -34,6 +30,7 @@ public class TodoDbContext : DbContext
             entity.Property(e => e.Title).IsRequired();
             entity.Property(e => e.Description).IsRequired(false);
             entity.Property(e => e.IsDeleted).HasDefaultValue(false);
+            entity.HasOne<User>().WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         base.OnModelCreating(modelBuilder);

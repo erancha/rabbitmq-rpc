@@ -24,7 +24,7 @@ public class UsersController : BaseApiController
     }
 
     [HttpPost]
-    public IActionResult CreateUser([FromBody] CreateUserMessage message)
+    public async Task<IActionResult> CreateUser([FromBody] CreateUserMessage message)
     {
         var validation = ValidateCreateUser(message);
         var localResponse = HandleLocalResponse(validation);
@@ -33,11 +33,11 @@ public class UsersController : BaseApiController
 
         try
         {
-            var result = _messageService.PublishMessageRpc<CreateUserMessage>(
+            var responseJson = await _messageService.PublishMessageRpc<CreateUserMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.User
             );
-            return HandleRpcResponse(result);
+            return HandleRpcResponse(responseJson);
         }
         catch (Exception ex)
         {
@@ -47,7 +47,7 @@ public class UsersController : BaseApiController
     }
 
     [HttpPut("{id}")]
-    public IActionResult UpdateUser(int id, [FromBody] UpdateUserData data)
+    public async Task<IActionResult> UpdateUser(int id, [FromBody] UpdateUserData data)
     {
         var validation = ValidateUpdateUser(id, data);
         var localResponse = HandleLocalResponse(validation);
@@ -57,11 +57,11 @@ public class UsersController : BaseApiController
         var message = new UpdateUserMessage { Id = id, Data = data };
         try
         {
-            var result = _messageService.PublishMessageRpc<UpdateUserMessage>(
+            var responseJson = await _messageService.PublishMessageRpc<UpdateUserMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.User
             );
-            return HandleRpcResponse(result);
+            return HandleRpcResponse(responseJson);
         }
         catch (Exception ex)
         {
@@ -71,7 +71,7 @@ public class UsersController : BaseApiController
     }
 
     [HttpDelete("{id}")]
-    public IActionResult DeleteUser(int id)
+    public async Task<IActionResult> DeleteUser(int id)
     {
         var validation = ValidateDeleteUser(id);
         var localResponse = HandleLocalResponse(validation);
@@ -81,15 +81,58 @@ public class UsersController : BaseApiController
         try
         {
             var message = new DeleteUserMessage(id);
-            var result = _messageService.PublishMessageRpc<DeleteUserMessage>(
+            var responseJson = await _messageService.PublishMessageRpc<DeleteUserMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.User
             );
-            return HandleRpcResponse(result);
+            return HandleRpcResponse(responseJson);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error publishing delete user message");
+            return StatusCode(500, "Error processing request");
+        }
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetAllUsers()
+    {
+        try
+        {
+            var message = new GetAllUsersMessage();
+            var responseJson = await _messageService.PublishMessageRpc<GetAllUsersMessage>(
+                message,
+                RabbitMQShared.RoutingKeys.User
+            );
+            return HandleRpcResponse(responseJson);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error publishing get all users message");
+            return StatusCode(500, "Error processing request");
+        }
+    }
+
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetUserById(int id)
+    {
+        var validation = ValidateGetUser(id);
+        var localResponse = HandleLocalResponse(validation);
+        if (localResponse != null)
+            return localResponse;
+
+        try
+        {
+            var message = new GetUserByIdMessage(id);
+            var responseJson = await _messageService.PublishMessageRpc<GetUserByIdMessage>(
+                message,
+                RabbitMQShared.RoutingKeys.User
+            );
+            return HandleRpcResponse(responseJson);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error publishing get user by id message");
             return StatusCode(500, "Error processing request");
         }
     }
@@ -129,7 +172,15 @@ public class UsersController : BaseApiController
     private LocalValidationResult ValidateDeleteUser(int id)
     {
         if (id <= 0)
-            return new LocalValidationResult(false, "Invalid user ID");
+            return new LocalValidationResult(false, "Id must be greater than 0");
+
+        return new LocalValidationResult(true);
+    }
+
+    private LocalValidationResult ValidateGetUser(int id)
+    {
+        if (id <= 0)
+            return new LocalValidationResult(false, "Id must be greater than 0");
 
         return new LocalValidationResult(true);
     }

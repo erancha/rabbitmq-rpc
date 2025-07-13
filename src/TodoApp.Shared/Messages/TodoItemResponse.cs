@@ -1,6 +1,6 @@
-namespace TodoApp.Shared.Models;
+namespace TodoApp.Shared.Messages;
 
-public class TodoItem
+public class TodoItemResponse
 {
     public int Id { get; set; }
     public string Title { get; set; } = string.Empty;
@@ -10,6 +10,4 @@ public class TodoItem
     public DateTime? CompletedAt { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
-    
-    public int UserId { get; set; }
 }

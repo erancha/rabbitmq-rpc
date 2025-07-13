@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using TodoApp.Shared.Models;
+using TodoApp.Shared.Messages;
 using TodoApp.WebApi.Configuration;
 using RabbitMQShared = TodoApp.Shared.Configuration.RabbitMQ;
 
@@ -37,7 +38,7 @@ public interface IRabbitMQMessageService
     /// <param name="message">The message to publish</param>
     /// <param name="routingKey">The queue name to publish to</param>
     /// <returns>The response message</returns>
-    RpcResponse PublishMessageRpc<T>(T message, string routingKey);
+    Task<string> PublishMessageRpc<T>(T message, string routingKey);
 }
 
 /// <summary>
@@ -137,7 +138,7 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         );
     }
 
-    public RpcResponse PublishMessageRpc<T>(T message, string routingKey)
+    public async Task<string> PublishMessageRpc<T>(T message, string routingKey)
     {
         var correlationId = Guid.NewGuid().ToString();
         var tcs = new TaskCompletionSource<string>();
@@ -174,7 +175,7 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         // Block until either:
         // 1. Response received (tcs completed by consumer)
         // 2. Timeout occurs
-        var completedTask = Task.WhenAny(tcs.Task, timeoutTask).Result;
+        var completedTask = await Task.WhenAny(tcs.Task, timeoutTask);
 
         if (completedTask == timeoutTask)
         {
@@ -186,24 +187,20 @@ public class RabbitMQMessageService : IRabbitMQMessageService
                 );
             }
 
-            return new RpcResponse
-            {
-                Success = false,
-                Error = new RpcError
+            return JsonSerializer.Serialize(
+                new RpcResponse
                 {
-                    Kind = "TEMPORARY_UNAVAILABLE",
-                    Message =
-                        $"Service is temporarily unavailable (timeout: {_config.RpcTimeoutSeconds}s). Your request is queued and will be processed when the system recovers",
-                },
-            };
+                    Success = false,
+                    Error = new RpcError
+                    {
+                        Kind = "TEMPORARY_UNAVAILABLE",
+                        Message =
+                            $"Service is temporarily unavailable (timeout: {_config.RpcTimeoutSeconds}s). Your request is queued and will be processed when the system recovers",
+                    },
+                }
+            );
         }
 
-        var responseJson = tcs.Task.Result;
-        return JsonSerializer.Deserialize<RpcResponse>(responseJson)!
-            ?? new RpcResponse
-            {
-                Success = false,
-                Error = new RpcError { Kind = "FATAL", Message = "Failed to deserialize response" },
-            };
+        return await tcs.Task;
     }
 }
