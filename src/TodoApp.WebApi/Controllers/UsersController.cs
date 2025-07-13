@@ -2,10 +2,10 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using RabbitMQ.Client;
-using TodoApp.Shared.Configuration;
 using TodoApp.Shared.Messages;
 using TodoApp.Shared.Models;
 using TodoApp.WebApi.Services;
+using RabbitMQShared = TodoApp.Shared.Configuration.RabbitMQ;
 
 namespace TodoApp.WebApi.Controllers;
 
@@ -35,7 +35,7 @@ public class UsersController : BaseApiController
         {
             var result = _messageService.PublishMessageRpc<CreateUserMessage>(
                 message,
-                RoutingKeys.Specific.UserCreated
+                RabbitMQShared.RoutingKeys.User
             );
             return HandleRpcResponse(result);
         }
@@ -59,7 +59,7 @@ public class UsersController : BaseApiController
         {
             var result = _messageService.PublishMessageRpc<UpdateUserMessage>(
                 message,
-                RoutingKeys.Specific.UserUpdated
+                RabbitMQShared.RoutingKeys.User
             );
             return HandleRpcResponse(result);
         }
@@ -83,7 +83,7 @@ public class UsersController : BaseApiController
             var message = new DeleteUserMessage(id);
             var result = _messageService.PublishMessageRpc<DeleteUserMessage>(
                 message,
-                RoutingKeys.Specific.UserDeleted
+                RabbitMQShared.RoutingKeys.User
             );
             return HandleRpcResponse(result);
         }

@@ -1,9 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using RabbitMQ.Client;
-using TodoApp.Shared.Configuration;
 using TodoApp.Shared.Data;
 using TodoApp.WorkerService.Configuration;
 using TodoApp.WorkerService.Services;
+using RabbitMQShared = TodoApp.Shared.Configuration.RabbitMQ;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -14,7 +14,8 @@ builder.Services.AddDbContext<TodoDbContext>(options =>
 
 // Configure RabbitMQ
 var rabbitMQConfig =
-    builder.Configuration.GetSection("RabbitMQ").Get<RabbitMQConfig>() ?? new RabbitMQConfig();
+    builder.Configuration.GetSection("RabbitMQ").Get<RabbitMQShared.Config>()
+    ?? new RabbitMQShared.Config();
 
 var factory = new ConnectionFactory
 {
@@ -47,57 +48,52 @@ if (connection is null)
 
 var channel = connection.CreateModel();
 
-// Declare exchange and queue
+// Declare exchange
 channel.ExchangeDeclare(
-    exchange: RabbitMQConfig.AppExchangeName,
-    type: ExchangeType.Topic,
+    exchange: RabbitMQShared.Config.AppExchangeName,
+    type: RabbitMQShared.Config.AppExchangeType,
     durable: true
 );
 
+// QueueDeclare options:
+// - durable: queue and messages survive broker restarts (default=false)
+// - autoDelete: delete queue when last consumer disconnects (default=false)
+// - exclusive: allow multiple connections (default=false)
+// - arguments: optional settings like TTL, max length (default=null)
+
 // Declare queues
 channel.QueueDeclare(
-    queue: QueueConfiguration.UsersQueueName,
-    durable: true,
-    exclusive: false,
-    autoDelete: false,
-    arguments: null
+    queue: RabbitMQConfig.UsersQueueName,
+    durable: true // queue and messages survive broker restarts
 );
 
 channel.QueueDeclare(
-    queue: QueueConfiguration.TodosQueueName,
-    durable: true,
-    exclusive: false,
-    autoDelete: false,
-    arguments: null
+    queue: RabbitMQConfig.TodosQueueName,
+    durable: true // queue and messages survive broker restarts
 );
 
-// Bind queues to exchange with routing keys
+// Bind queues with direct routing keys
 channel.QueueBind(
-    queue: QueueConfiguration.UsersQueueName,
-    exchange: RabbitMQConfig.AppExchangeName,
-    routingKey: QueueConfiguration.RoutingKeys.UserEvents
+    queue: RabbitMQConfig.UsersQueueName,
+    exchange: RabbitMQShared.Config.AppExchangeName,
+    routingKey: RabbitMQShared.RoutingKeys.User
 );
 
 channel.QueueBind(
-    queue: QueueConfiguration.TodosQueueName,
-    exchange: RabbitMQConfig.AppExchangeName,
-    routingKey: QueueConfiguration.RoutingKeys.TodoEvents
+    queue: RabbitMQConfig.TodosQueueName,
+    exchange: RabbitMQShared.Config.AppExchangeName,
+    routingKey: RabbitMQShared.RoutingKeys.Todo
 );
 
 builder.Services.AddSingleton<IModel>(channel);
 
-// Message handlers are registered as singletons since they are long-lived services that manage RabbitMQ consumers.
-// They use IServiceScopeFactory internally to create scopes for each message processing operation.
-builder.Services.AddSingleton<UserMessageHandler>();
-builder.Services.AddSingleton<TodoItemMessageHandler>();
+// Register message handlers as hosted services
+// This automatically creates singleton instances and manages their lifecycle
+builder.Services.AddHostedService<UserMessageHandler>();
+builder.Services.AddHostedService<TodoItemMessageHandler>();
 
-// Register the MessageProcessingService as a hosted service (a background task/service that is managed by the .NET application host (IHost)).
-// This ensures proper initialization sequence:
-// 1. Application starts
-// 2. MessageProcessingService.StartAsync is called
-// 3. Database migrations are applied
-// 4. Message handlers begin processing RabbitMQ messages
-builder.Services.AddHostedService<MessageProcessingService>();
+// Register database initialization service to run migrations before the application starts
+builder.Services.AddHostedService<DatabaseInitializationService>();
 var host = builder.Build();
 await host.RunAsync();
 // The host:

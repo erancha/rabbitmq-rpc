@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using TodoApp.Shared.Configuration;
 using TodoApp.Shared.Data;
 using TodoApp.Shared.Messages;
 using TodoApp.Shared.Models;
@@ -12,9 +11,9 @@ using TodoApp.WorkerService.Helpers;
 
 namespace TodoApp.WorkerService.Services;
 
-public class UserMessageHandler : IDisposable
+public class UserMessageHandler : IHostedService, IDisposable
 {
-    private const string CurrentQueueName = Configuration.QueueConfiguration.UsersQueueName;
+    private const string CurrentQueueName = Configuration.RabbitMQConfig.UsersQueueName;
     private readonly IModel _channel;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<UserMessageHandler> _logger;
@@ -30,7 +29,7 @@ public class UserMessageHandler : IDisposable
         _logger = logger;
     }
 
-    public void StartConsuming()
+    public Task StartAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation(
             "Starting to consume messages from {CurrentQueueName}",
@@ -42,6 +41,10 @@ public class UserMessageHandler : IDisposable
 
         consumer.Received += async (model, ea) =>
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
             try
             {
                 var messageType = ea.BasicProperties?.Type;
@@ -70,6 +73,13 @@ public class UserMessageHandler : IDisposable
         };
 
         _logger.LogInformation("Consumer started for {CurrentQueueName}", CurrentQueueName);
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Stopping consumer for {CurrentQueueName}", CurrentQueueName);
+        return Task.CompletedTask;
     }
 
     private async Task<string> ProcessMessage(string messageType, string message)

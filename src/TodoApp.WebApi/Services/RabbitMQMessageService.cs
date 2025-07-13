@@ -5,9 +5,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using TodoApp.Shared.Configuration;
 using TodoApp.Shared.Models;
 using TodoApp.WebApi.Configuration;
+using RabbitMQShared = TodoApp.Shared.Configuration.RabbitMQ;
 
 namespace TodoApp.WebApi.Services;
 
@@ -78,12 +78,14 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         var instanceId = Environment.MachineName; // Or use another unique identifier
         _replyQueueName = $"webapi-replies-{instanceId}";
 
+        // QueueDeclare options:
+        // - durable: queue and messages survive broker restarts (default=false)
+        // - autoDelete: delete queue when last consumer disconnects (default=false)
+        // - exclusive: allow multiple connections (default=false)
+        // - arguments: optional settings like TTL, max length (default=null)
         _channel.QueueDeclare(
             queue: _replyQueueName,
-            durable: true,
-            exclusive: false, // single reply queue reused by all requests from this instance, survives restarts
-            autoDelete: false,
-            arguments: null
+            durable: true // queue and messages survive broker restarts
         );
 
         // Set up consumer for replies
@@ -128,7 +130,7 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         properties.Type = typeof(T).Name;
 
         _channel.BasicPublish(
-            exchange: RabbitMQConfig.AppExchangeName,
+            exchange: RabbitMQShared.Config.AppExchangeName,
             routingKey: routingKey,
             basicProperties: properties,
             body: body
@@ -160,7 +162,7 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         }
 
         _channel.BasicPublish(
-            exchange: RabbitMQConfig.AppExchangeName,
+            exchange: RabbitMQShared.Config.AppExchangeName,
             routingKey: routingKey,
             basicProperties: properties,
             body: body
