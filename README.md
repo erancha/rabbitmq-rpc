@@ -65,14 +65,14 @@ See the diagram for how the topic exchange routes messages to Workers' queues ba
 
 ### RabbitMQ Communication Pattern
 
-This application uses RabbitMQ's Topic Exchange pattern with RPC (Remote Procedure Call) for communication between the Web API and Worker services. Messages are published to a topic exchange with specific routing keys, and the Worker Service binds its queues to patterns to receive relevant messages. Each request includes a temporary reply queue and correlation ID for RPC communication, enabling the Worker to process requests and send responses back to the Web API.
+This application uses RabbitMQ's Topic Exchange pattern with RPC (Remote Procedure Call) for communication between the Web API and Worker services. Messages are published to a topic exchange with specific routing keys, and the Worker Service binds its queues to patterns to receive relevant messages. Each WebApi instance maintains a durable reply queue, with correlation IDs for routing RPC responses, enabling the Worker to process requests and send responses back to the Web API.
 
 **Key Concepts:**
 
 - **Exchange**: A topic exchange named `todo-app-exchange` routes messages based on routing keys
 - **Routing Keys**: Structured patterns (e.g., `user.created`, `todo.updated`) for message routing
 - **Queue Bindings**: Worker queues bound to patterns (`user.*`, `todo.*`) for message filtering
-- **Reply Queues & Correlation IDs**: Each RPC request creates a temporary reply queue and unique correlation ID to track responses (see **considerations** below)
+- **Reply Queues & Correlation IDs**: All RPC requests from a WebApi instance share a single durable reply queue and unique correlation ID to track responses (see **considerations** below)
 
 **Error Handling & Reliability:**
 
@@ -92,9 +92,10 @@ This application uses RabbitMQ's Topic Exchange pattern with RPC (Remote Procedu
 
 - Higher complexity compared to direct HTTP communication
 - Additional operational overhead for queue management
-- Creating temporary reply queues per request can impact performance at high scale
-  - Current approach favors simplicity: Using RabbitMQ's built-in temporary queues ([RabbitMQMessageService.cs](src/TodoApp.WebApi/Services/RabbitMQMessageService.cs)) which are auto-deleted when the connection closes
-  - Alternative approach favors performance: Single persistent reply queue per client with correlation IDs
+- Reply queue design optimized for performance and reliability:
+  - Each WebApi instance creates one durable, named reply queue at startup ([RabbitMQMessageService.cs](src/TodoApp.WebApi/Services/RabbitMQMessageService.cs))
+  - Queue persists across restarts and survives connection failures
+  - Correlation IDs route responses to correct requests within the instance
   - Trade-off: Our simpler approach is sufficient for most scenarios, while persistent queues require manual cleanup but may handle higher loads
 - Potential debugging complexity in distributed scenarios
 

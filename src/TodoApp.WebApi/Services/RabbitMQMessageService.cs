@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -41,13 +42,26 @@ public interface IRabbitMQMessageService
 
 /// <summary>
 /// Default implementation of IRabbitMQMessageService that handles message publishing to RabbitMQ.
-/// Uses the message class name to infer the message type.
+/// Design changes needed for single reply queue approach:
+/// 1. Create an instance-specific reply queue at service startup instead of per request
+///    - Queue should be durable and named with instance ID (e.g. "webapi-replies-{instanceId}")
+///    - Better debugging, monitoring and isolation compared to shared queue approach (in which all WebApi instances share one reply queue)
+/// 2. Use correlationId as key in ConcurrentDictionary<string, TaskCompletionSource<string>>
+///    - Add pending requests on publish, remove when response received
+///    - Clean up expired requests periodically to prevent memory leaks
+/// 3. Single consumer on reply queue dispatches to correct request using correlationId
+///    - More efficient than creating/destroying consumers per request
+///    - Requires thread-safe response routing via ConcurrentDictionary
+/// 4. Consider implementing consumer reconnection/recovery logic
+///    - Single queue/consumer is a critical path, needs robust error handling
 /// </summary>
 public class RabbitMQMessageService : IRabbitMQMessageService
 {
     private readonly IModel _channel;
     private readonly ILogger<RabbitMQMessageService> _logger;
     private readonly WebApiConfig _config;
+    private readonly string _replyQueueName; // instance-specific reply queue
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _pendingRequests; // tracks in-flight RPC requests by correlationId
 
     public RabbitMQMessageService(
         IModel channel,
@@ -58,6 +72,51 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         _channel = channel;
         _logger = logger;
         _config = config.Value;
+        _pendingRequests = new ConcurrentDictionary<string, TaskCompletionSource<string>>();
+
+        // Create a durable, named, instance-specific reply queue
+        var instanceId = Environment.MachineName; // Or use another unique identifier
+        _replyQueueName = $"webapi-replies-{instanceId}";
+
+        _channel.QueueDeclare(
+            queue: _replyQueueName,
+            durable: true,
+            exclusive: false, // single reply queue reused by all requests from this instance, survives restarts
+            autoDelete: false,
+            arguments: null
+        );
+
+        // Set up consumer for replies
+        var consumer = new EventingBasicConsumer(_channel);
+        consumer.Received += (model, ea) =>
+        {
+            var correlationId = ea.BasicProperties.CorrelationId;
+            var response = Encoding.UTF8.GetString(ea.Body.ToArray());
+
+            if (_config.EnableRequestLogging)
+            {
+                _logger.LogInformation(
+                    "Received RPC response with correlation ID {CorrelationId}",
+                    correlationId
+                );
+            }
+
+            // If found in _pendingRequests, complete the task with the response value
+            // This unblocks the waiting PublishMessageRpc call
+            if (_pendingRequests.TryRemove(correlationId, out var tcs))
+            {
+                tcs.SetResult(response);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Received response for unknown correlation ID {CorrelationId}",
+                    correlationId
+                );
+            }
+        };
+
+        _channel.BasicConsume(consumer: consumer, queue: _replyQueueName, autoAck: true);
     }
 
     public void PublishMessage<T>(T message, string routingKey)
@@ -79,38 +138,17 @@ public class RabbitMQMessageService : IRabbitMQMessageService
     public RpcResponse PublishMessageRpc<T>(T message, string routingKey)
     {
         var correlationId = Guid.NewGuid().ToString();
-        var replyQueueName = _channel.QueueDeclare().QueueName;
         var tcs = new TaskCompletionSource<string>();
+
+        // Store the TaskCompletionSource for this request
+        _pendingRequests.TryAdd(correlationId, tcs); // Will always succeed as correlationId is a new GUID
 
         var properties = _channel.CreateBasicProperties();
         properties.CorrelationId = correlationId;
-        properties.ReplyTo = replyQueueName;
+        properties.ReplyTo = _replyQueueName;
         properties.Type = typeof(T).Name;
 
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message));
-
-        var consumer = new EventingBasicConsumer(_channel);
-        consumer.Received += (model, ea) =>
-        {
-#if DEBUG
-            System.Diagnostics.Debug.Assert(
-                ea.BasicProperties.CorrelationId == correlationId,
-                "CorrelationId mismatch in RPC response"
-            );
-#endif
-            var response = Encoding.UTF8.GetString(ea.Body.ToArray());
-            if (_config.EnableRequestLogging)
-            {
-                _logger.LogInformation(
-                    "Received RPC response for message type {MessageType} with correlation ID {CorrelationId}",
-                    typeof(T).Name,
-                    correlationId
-                );
-            }
-            tcs.SetResult(response);
-        };
-
-        _channel.BasicConsume(consumer: consumer, queue: replyQueueName, autoAck: true);
 
         if (_config.EnableRequestLogging)
         {
@@ -128,7 +166,12 @@ public class RabbitMQMessageService : IRabbitMQMessageService
             body: body
         );
 
+        // Create timeout task that completes after specified seconds
         var timeoutTask = Task.Delay(TimeSpan.FromSeconds(_config.RpcTimeoutSeconds));
+
+        // Block until either:
+        // 1. Response received (tcs completed by consumer)
+        // 2. Timeout occurs
         var completedTask = Task.WhenAny(tcs.Task, timeoutTask).Result;
 
         if (completedTask == timeoutTask)
