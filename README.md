@@ -69,9 +69,9 @@ This application uses RabbitMQ's Topic Exchange pattern with RPC (Remote Procedu
 
 **Key Concepts:**
 
-- **Exchange**: A topic exchange named `todo-app-exchange` routes messages based on routing keys
-- **Routing Keys**: Structured patterns (e.g., `user.created`, `todo.updated`) for message routing
-- **Queue Bindings**: Worker queues bound to patterns (`user.*`, `todo.*`) for message filtering
+- **Exchange**: A direct exchange named `todo-app-exchange` routes messages based on simple routing keys
+- **Routing Keys**: Two simple keys (`user` and `todo`) for direct message routing
+- **Queues**: Two dedicated queues for handling user and todo operations respectively
 - **Reply Queues & Correlation IDs**: All RPC requests from a WebApi instance share a single durable reply queue and unique correlation ID to track responses (see **considerations** below)
 
 **Error Handling & Reliability:**

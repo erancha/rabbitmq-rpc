@@ -1,6 +1,8 @@
-namespace TodoApp.Shared.Configuration;
+using RabbitMQ.Client;
 
-public class RabbitMQConfig
+namespace TodoApp.Shared.Configuration.RabbitMQ;
+
+public class Config
 {
     public string Host { get; set; } = "localhost";
     public string Username { get; set; } = "guest";
@@ -8,4 +10,5 @@ public class RabbitMQConfig
     public int Port { get; set; } = 5672;
 
     public const string AppExchangeName = "todo-app-exchange";
+    public const string AppExchangeType = ExchangeType.Direct;
 }

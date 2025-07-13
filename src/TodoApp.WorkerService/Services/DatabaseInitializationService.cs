@@ -4,24 +4,22 @@ using TodoApp.Shared.Data;
 namespace TodoApp.WorkerService.Services;
 
 /// <summary>
-/// A hosted service responsible for initializing the database and starting message handlers.
-/// Ensures proper startup sequence by:
-/// 1. Running database migrations
-/// 2. Starting message handlers for processing RabbitMQ messages
+/// A hosted service responsible for initializing the database.
+/// Ensures database is ready by running any pending migrations before the application starts.
 /// </summary>
-public class MessageProcessingService : IHostedService
+public class DatabaseInitializationService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<MessageProcessingService> _logger;
+    private readonly ILogger<DatabaseInitializationService> _logger;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="MessageProcessingService"/> class.
+    /// Initializes a new instance of the <see cref="DatabaseInitializationService"/> class.
     /// </summary>
     /// <param name="serviceProvider">The service provider for dependency resolution.</param>
     /// <param name="logger">Logger for diagnostic information.</param>
-    public MessageProcessingService(
+    public DatabaseInitializationService(
         IServiceProvider serviceProvider,
-        ILogger<MessageProcessingService> logger
+        ILogger<DatabaseInitializationService> logger
     )
     {
         _serviceProvider = serviceProvider;
@@ -95,14 +93,7 @@ public class MessageProcessingService : IHostedService
 
             _logger.LogInformation("Database migrations completed");
 
-            // Then start message handlers
-            var userHandler = scope.ServiceProvider.GetRequiredService<UserMessageHandler>();
-            var todoItemHandler =
-                scope.ServiceProvider.GetRequiredService<TodoItemMessageHandler>();
-
-            userHandler.StartConsuming();
-            todoItemHandler.StartConsuming();
-            _logger.LogInformation("Message handlers started");
+            _logger.LogInformation("Database initialization completed");
         }
         catch (Exception ex)
         {

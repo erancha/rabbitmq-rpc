@@ -1,7 +1,7 @@
 using RabbitMQ.Client;
-using TodoApp.Shared.Configuration;
 using TodoApp.WebApi.Configuration;
 using TodoApp.WebApi.Services;
+using RabbitMQShared = TodoApp.Shared.Configuration.RabbitMQ;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,11 +11,14 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // Configure WebAPI settings
-builder.Services.Configure<WebApiConfig>(builder.Configuration.GetSection("WebApi"));
+builder.Services.Configure<RabbitMQShared.Config>(
+    builder.Configuration.GetSection("RabbitMQConfig")
+);
 
 // Configure RabbitMQ
 var rabbitMQConfig =
-    builder.Configuration.GetSection("RabbitMQ").Get<RabbitMQConfig>() ?? new RabbitMQConfig();
+    builder.Configuration.GetSection("RabbitMQ").Get<RabbitMQShared.Config>()
+    ?? new RabbitMQShared.Config();
 
 var factory = new ConnectionFactory
 {
@@ -56,8 +59,8 @@ builder.Services.AddSingleton<IRabbitMQMessageService, RabbitMQMessageService>()
 // Setting durable: true means the exchange will survive a RabbitMQ server restart
 // The exchange definition is persisted to disk and restored on server startup
 channel.ExchangeDeclare(
-    exchange: RabbitMQConfig.AppExchangeName,
-    type: ExchangeType.Topic,
+    exchange: RabbitMQShared.Config.AppExchangeName,
+    type: RabbitMQShared.Config.AppExchangeType,
     durable: true
 );
 

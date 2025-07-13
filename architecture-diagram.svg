@@ -7,25 +7,25 @@
   <rect x="200" y="220" width="160" height="70" fill="#fff" stroke="#0d6efd" stroke-width="2" rx="5"/>
   <text x="280" y="260" font-family="Arial" font-size="16" fill="#0d6efd" text-anchor="middle" style="white-space: pre;">Web API</text>
   <text x="558.526" y="243.226" font-family="Arial" font-size="16" fill="#198754" text-anchor="middle" style="white-space: pre; font-size: 16px;">RabbitMQ</text>
-  <rect x="882.529" y="206.277" width="160" height="70" fill="#fff" stroke="#0d6efd" stroke-width="2" rx="5"/>
-  <text x="970.153" y="248.564" font-family="Arial" font-size="16" fill="#0d6efd" text-anchor="middle" style="white-space: pre; font-size: 16px;">Worker</text>
+  <rect x="883.291" y="207.802" width="160" height="70" fill="#fff" stroke="#0d6efd" stroke-width="2" rx="5"/>
+  <text x="960.242" y="201.296" font-family="Arial" font-size="16" fill="#0d6efd" text-anchor="middle" style="white-space: pre; font-size: 16px;">Worker</text>
   <ellipse cx="899.238" cy="446.633" rx="60" ry="35" fill="#fff" stroke="#6c757d" stroke-width="2"/>
   <text x="897.713" y="451.633" font-family="Arial" font-size="16" fill="#6c757d" text-anchor="middle" style="white-space: pre; font-size: 16px;">PostgreSQL</text>
   <rect x="508.437" y="145.336" width="120" height="40" fill="#fff" stroke="#6610f2" stroke-width="2" rx="5"/>
   <text x="562.338" y="172.624" font-family="Arial" font-size="14" fill="#6610f2" text-anchor="middle" style="white-space: pre; font-size: 14px;">Shared Lib</text>
-  <text x="559.288" y="292.394" font-family="Arial" font-size="13" fill="#ffc107" text-anchor="middle" style="white-space: pre; font-size: 13px;">todo-app-exchange </text>
+  <text style="fill: rgb(145, 7, 255); font-family: Arial; font-size: 13px; text-anchor: middle; white-space: pre;" x="559.288" y="292.394">todo-app-exchange<tspan x="559.2880249023438" dy="1em">​</tspan>(type: direct)</text>
   <text x="534.892" y="355.425" font-family="Arial" font-size="11" fill="#ffc107" text-anchor="middle" style="white-space: pre; font-size: 11px;"> </text>
   <rect x="510.813" y="326.544" width="99.148" height="43.901" fill="#e0f7fa" stroke="#00bcd4" stroke-dasharray="4,2" stroke-width="2" rx="5" style=""/>
   <text x="554.962" y="342.732" font-family="Arial" font-size="11" fill="#00bcd4" text-anchor="middle" style="white-space: pre; font-size: 11px;" transform="matrix(1, 0, 0, 1, 6.099111, 5.336722)">Instance-specific <tspan x="554.9619750976562" dy="1em">​</tspan>RPC reply queue </text>
   <line x1="120" y1="195" x2="200" y2="250" stroke="#212529" stroke-width="2" marker-end="url(#arrowhead)"/>
-  <text x="140" y="232.834" font-family="Arial" font-size="13" fill="#212529" style="white-space: pre; font-size: 13px;" transform="matrix(0.858044, 0, 0, 0.947369, -5.026559, 10.127757)">REST</text>
-  <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px;" transform="matrix(0.989004, 0, 0, 1.030544, 144.427292, -108.875809)">(1) Request<tspan x="238.53199768066406" dy="1em">​</tspan>(2) reply_to<tspan x="238.53199768066406" dy="1em">​</tspan>(3) correlation_id</text>
+  <text x="140" y="232.834" font-family="Arial" font-size="13" fill="#212529" style="white-space: pre; font-size: 13px; transform-box: fill-box; transform-origin: 57.0133% -12.0607%;" transform="matrix(0.675814, 0.528692, -0.58373, 0.746168, -14.614461, 0.155648)">REST</text>
+  <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px; transform-box: fill-box; transform-origin: 50% 50%;" transform="matrix(0.947453, 0.283658, -0.295572, 0.987248, 138.259323, -90.920815)">(1) Request<tspan x="238.53199768066406" dy="1em">​</tspan>(2) reply_to<tspan x="238.53199768066406" dy="1em">​</tspan>(3) correlation_id</text>
   <line x1="359.289" y1="253.406" x2="499.943" y2="296.05" stroke-width="2" marker-end="url(#arrowhead)" style="stroke: rgb(212, 0, 100);"/>
   <text x="300" y="340" font-family="Arial" font-size="11" fill="#00bcd4" style="white-space: pre;"> </text>
-  <line x1="877.903" y1="260.266" x2="612.013" y2="345.603" stroke-width="2" marker-end="url(#arrowhead)" style="stroke: rgb(6, 212, 0);"/>
+  <line x1="890.101" y1="257.216" x2="612.013" y2="345.603" stroke-width="2" marker-end="url(#arrowhead)" style="stroke: rgb(6, 212, 0);"/>
   <text x="680.051" y="345.337" font-family="Arial" font-size="11" fill="#00bcd4" style="white-space: pre; font-size: 11px;"> </text>
   <line x1="897.675" y1="275.584" x2="900" y2="410.87" stroke="#6c757d" stroke-width="2" marker-end="url(#arrowhead)" style=""/>
-  <text x="910" y="340" font-family="Arial" font-size="12" fill="#6c757d" style="white-space: pre;">CRUD</text>
+  <text x="910" y="340" font-family="Arial" font-size="12" fill="#6c757d" style="white-space: pre; font-size: 12px; transform-box: fill-box; transform-origin: 50% 50%;" transform="matrix(0.003229, 0.999995, -0.999995, 0.003229, -16.010114, -2.286806)">CRUD</text>
   <line x1="505.922" y1="162.465" x2="280" y2="220" stroke="#6610f2" stroke-width="2" stroke-dasharray="5,5" style=""/>
   <line x1="628.576" y1="160.431" x2="883.331" y2="214.41" stroke="#6610f2" stroke-width="2" stroke-dasharray="5,5" style="transform-origin: 775.987px 196.897px;"/>
   <defs>
@@ -36,16 +36,18 @@
   <text style="white-space: pre; fill: rgb(51, 51, 51); font-family: Arial, sans-serif; font-size: 28px;" x="323.253" y="449.047"> </text>
   <line x1="612.012" y1="302.312" x2="719.882" y2="280.916" stroke-width="2" marker-end="url(#arrowhead)" style="stroke-width: 2; stroke: rgb(212, 0, 94);"/>
   <line x1="510.327" y1="348.056" x2="333.637" y2="289.301" stroke-width="2" marker-end="url(#arrowhead)" style="stroke-width: 2; stroke: rgb(53, 212, 0);"/>
-  <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px;" transform="matrix(0.989004, 0, 0, 1.030544, 470.477905, -10.066788)">(1) Response<tspan x="238.53199768066406" dy="1em">​</tspan>(2) correlation_id</text>
+  <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px; transform-box: fill-box; transform-origin: 50% 50%;" transform="matrix(0.939663, -0.308485, 0.321442, 0.97913, 463.547546, -9.067609)">(1) Response<tspan x="238.53199768066406" dy="1em">​</tspan>(2) correlation_id</text>
   <path d="M 731.512 279.415 m -14.104 0 a 14.104 15.629 0 1 0 28.208 0 a 14.104 15.629 0 1 0 -28.208 0 Z M 731.512 279.415 m -8.463 0 a 8.463 9.377 0 0 1 16.926 0 a 8.463 9.377 0 0 1 -16.926 0 Z" bx:shape="ring 731.512 279.415 8.463 9.377 14.104 15.629 1@b6a834c9" style="fill: rgb(216, 216, 216); stroke: rgb(0, 0, 0);"/>
-  <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px;" transform="matrix(0.955154, 0, 0, 1.030544, 425.921783, -64.958778)">todos-queue</text>
-  <line x1="746.191" y1="275.248" x2="883.795" y2="236.316" stroke-width="2" marker-end="url(#arrowhead)" style="stroke-width: 2; stroke: rgb(212, 0, 94);"/>
-  <rect x="478.017" y="226.43" width="160.864" height="150.191" style="fill: rgb(216, 216, 216); stroke: rgb(0, 0, 0); opacity: 0.28;"/>
-  <path d="M 558.831 258.45 L 625.656 281.366 L 600.131 318.444 L 517.531 318.444 L 492.006 281.366 Z" bx:shape="n-gon 558.831 291.614 70.264 33.164 5 0 1@960f3641" style="fill: rgb(216, 216, 216); stroke: rgb(0, 0, 0); opacity: 0.15;"/>
+  <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px; transform-box: fill-box; transform-origin: 50% 50%;" transform="matrix(0.91965, -0.257998, 0.278362, 0.992238, 512.089417, -71.006462)">todos-queue</text>
+  <line x1="746.191" y1="275.248" x2="899.043" y2="239.366" stroke-width="2" marker-end="url(#arrowhead)" style="stroke-width: 2; stroke: rgb(212, 0, 94);"/>
+  <rect x="482.438" y="249.739" width="162.352" height="168.488" style="stroke: rgb(0, 0, 0); opacity: 0.28; fill: rgb(255, 255, 255);" transform="matrix(1, 0, -0.002549, 1, -5.833675, -33.220036)"/>
+  <path d="M 556.544 259.212 L 623.369 282.128 L 597.844 319.206 L 515.244 319.206 L 489.719 282.128 Z" bx:shape="n-gon 556.544 292.376 70.264 33.164 5 0 1@2bdebf53" style="stroke: rgb(0, 0, 0); opacity: 0.15; fill: rgb(255, 255, 255);"/>
   <path d="M 733.418 243.202 m -14.104 0 a 14.104 15.629 0 1 0 28.208 0 a 14.104 15.629 0 1 0 -28.208 0 Z M 733.418 243.202 m -8.463 0 a 8.463 9.377 0 0 1 16.926 0 a 8.463 9.377 0 0 1 -16.926 0 Z" bx:shape="ring 733.418 243.202 8.463 9.377 14.104 15.629 1@bf1d9379" style="fill: rgb(216, 216, 216); stroke: rgb(0, 0, 0); stroke-width: 1;"/>
-  <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px;" transform="matrix(0.955154, 0, 0, 1.030544, 425.197662, -90.640999)">users-queue</text>
-  <polyline stroke-width="2" marker-end="url(#arrowhead)" style="stroke-width: 2; stroke: rgb(212, 0, 94);" points="607.818 270.672 638.982 266.49 721.787 255.376"/>
-  <polyline stroke-width="2" marker-end="url(#arrowhead)" style="stroke-width: 2; stroke: rgb(212, 0, 94);" points="745.811 243.988 783.021 239.598 881.889 227.93"/>
-  <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px; transform-box: fill-box; transform-origin: 103.429% 55.6713%;" transform="matrix(0.955154, 0, 0, 1.030544, 528.567444, -99.715637)">user.*</text>
-  <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px;" transform="matrix(0.955154, 0, 0, 1.030544, 533.858337, -79.967552)">todo.*</text>
+  <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px; transform-box: fill-box; transform-origin: 72.6659% -226.147%;" transform="matrix(0.955154, -0.12576, 0, 1.030544, 516.004944, -99.691284)">users-queue</text>
+  <polyline stroke-width="2" marker-end="url(#arrowhead)" style="stroke-width: 2; stroke: rgb(212, 0, 94);" points="607.818 270.672 638.357 264.614 719.5 248.514"/>
+  <polyline stroke-width="2" marker-end="url(#arrowhead)" style="stroke-width: 2; stroke: rgb(212, 0, 94);" points="745.811 243.988 788.024 238.556 900.187 224.118"/>
+  <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px; transform-box: fill-box; transform-origin: 103.429% 55.6713%;" transform="matrix(0.950853, -0.140418, 0.263454, 0.996299, 418.783447, -79.131142)">`user`</text>
+  <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px;" transform="matrix(0.955154, -0.159659, 0, 1.030544, 431.698242, -14.985349)">`todo`</text>
+  <text style="fill: rgb(51, 51, 51); font-family: Arial, sans-serif; font-size: 14px; font-weight: 700; white-space: pre;" x="902.669" y="229.395">users-handler</text>
+  <text style="fill: rgb(51, 51, 51); font-family: Arial, sans-serif; font-size: 14px; font-weight: 700; white-space: pre; stroke-width: 1;" x="903.326" y="245.023">todos-handler</text>
 </svg>
