@@ -15,15 +15,14 @@
   <text x="562.338" y="172.624" font-family="Arial" font-size="14" fill="#6610f2" text-anchor="middle" style="white-space: pre; font-size: 14px;">Shared Lib</text>
   <text x="559.288" y="292.394" font-family="Arial" font-size="13" fill="#ffc107" text-anchor="middle" style="white-space: pre; font-size: 13px;">todo-app-exchange </text>
   <text x="534.892" y="355.425" font-family="Arial" font-size="11" fill="#ffc107" text-anchor="middle" style="white-space: pre; font-size: 11px;"> </text>
-  <rect x="510.813" y="326.544" width="90" height="40.089" fill="#e0f7fa" stroke="#00bcd4" stroke-dasharray="4,2" stroke-width="2" rx="5" style=""/>
-  <text x="554.962" y="342.732" font-family="Arial" font-size="11" fill="#00bcd4" text-anchor="middle" style="white-space: pre; font-size: 11px;">Temp Queue</text>
-  <text x="555.724" y="358.018" font-family="Arial" font-size="10" fill="#00bcd4" text-anchor="middle" style="white-space: pre; font-size: 10px;">(RPC Reply)</text>
+  <rect x="510.813" y="326.544" width="99.148" height="43.901" fill="#e0f7fa" stroke="#00bcd4" stroke-dasharray="4,2" stroke-width="2" rx="5" style=""/>
+  <text x="554.962" y="342.732" font-family="Arial" font-size="11" fill="#00bcd4" text-anchor="middle" style="white-space: pre; font-size: 11px;" transform="matrix(1, 0, 0, 1, 6.099111, 5.336722)">Instance-specific <tspan x="554.9619750976562" dy="1em">​</tspan>RPC reply queue </text>
   <line x1="120" y1="195" x2="200" y2="250" stroke="#212529" stroke-width="2" marker-end="url(#arrowhead)"/>
   <text x="140" y="232.834" font-family="Arial" font-size="13" fill="#212529" style="white-space: pre; font-size: 13px;" transform="matrix(0.858044, 0, 0, 0.947369, -5.026559, 10.127757)">REST</text>
   <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px;" transform="matrix(0.989004, 0, 0, 1.030544, 144.427292, -108.875809)">(1) Request<tspan x="238.53199768066406" dy="1em">​</tspan>(2) reply_to<tspan x="238.53199768066406" dy="1em">​</tspan>(3) correlation_id</text>
   <line x1="359.289" y1="253.406" x2="499.943" y2="296.05" stroke-width="2" marker-end="url(#arrowhead)" style="stroke: rgb(212, 0, 100);"/>
   <text x="300" y="340" font-family="Arial" font-size="11" fill="#00bcd4" style="white-space: pre;"> </text>
-  <line x1="877.903" y1="260.266" x2="599.815" y2="347.89" stroke-width="2" marker-end="url(#arrowhead)" style="stroke: rgb(6, 212, 0);"/>
+  <line x1="877.903" y1="260.266" x2="612.013" y2="345.603" stroke-width="2" marker-end="url(#arrowhead)" style="stroke: rgb(6, 212, 0);"/>
   <text x="680.051" y="345.337" font-family="Arial" font-size="11" fill="#00bcd4" style="white-space: pre; font-size: 11px;"> </text>
   <line x1="897.675" y1="275.584" x2="900" y2="410.87" stroke="#6c757d" stroke-width="2" marker-end="url(#arrowhead)" style=""/>
   <text x="910" y="340" font-family="Arial" font-size="12" fill="#6c757d" style="white-space: pre;">CRUD</text>
@@ -36,12 +35,12 @@
   </defs>
   <text style="white-space: pre; fill: rgb(51, 51, 51); font-family: Arial, sans-serif; font-size: 28px;" x="323.253" y="449.047"> </text>
   <line x1="612.012" y1="302.312" x2="719.882" y2="280.916" stroke-width="2" marker-end="url(#arrowhead)" style="stroke-width: 2; stroke: rgb(212, 0, 94);"/>
-  <line x1="509.565" y1="346.531" x2="333.637" y2="289.301" stroke-width="2" marker-end="url(#arrowhead)" style="stroke-width: 2; stroke: rgb(53, 212, 0);"/>
+  <line x1="510.327" y1="348.056" x2="333.637" y2="289.301" stroke-width="2" marker-end="url(#arrowhead)" style="stroke-width: 2; stroke: rgb(53, 212, 0);"/>
   <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px;" transform="matrix(0.989004, 0, 0, 1.030544, 470.477905, -10.066788)">(1) Response<tspan x="238.53199768066406" dy="1em">​</tspan>(2) correlation_id</text>
   <path d="M 731.512 279.415 m -14.104 0 a 14.104 15.629 0 1 0 28.208 0 a 14.104 15.629 0 1 0 -28.208 0 Z M 731.512 279.415 m -8.463 0 a 8.463 9.377 0 0 1 16.926 0 a 8.463 9.377 0 0 1 -16.926 0 Z" bx:shape="ring 731.512 279.415 8.463 9.377 14.104 15.629 1@b6a834c9" style="fill: rgb(216, 216, 216); stroke: rgb(0, 0, 0);"/>
   <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px;" transform="matrix(0.955154, 0, 0, 1.030544, 425.921783, -64.958778)">todos-queue</text>
   <line x1="746.191" y1="275.248" x2="883.795" y2="236.316" stroke-width="2" marker-end="url(#arrowhead)" style="stroke-width: 2; stroke: rgb(212, 0, 94);"/>
-  <rect x="480.305" y="223.38" width="160.864" height="150.191" style="fill: rgb(216, 216, 216); stroke: rgb(0, 0, 0); opacity: 0.28;"/>
+  <rect x="478.017" y="226.43" width="160.864" height="150.191" style="fill: rgb(216, 216, 216); stroke: rgb(0, 0, 0); opacity: 0.28;"/>
   <path d="M 558.831 258.45 L 625.656 281.366 L 600.131 318.444 L 517.531 318.444 L 492.006 281.366 Z" bx:shape="n-gon 558.831 291.614 70.264 33.164 5 0 1@960f3641" style="fill: rgb(216, 216, 216); stroke: rgb(0, 0, 0); opacity: 0.15;"/>
   <path d="M 733.418 243.202 m -14.104 0 a 14.104 15.629 0 1 0 28.208 0 a 14.104 15.629 0 1 0 -28.208 0 Z M 733.418 243.202 m -8.463 0 a 8.463 9.377 0 0 1 16.926 0 a 8.463 9.377 0 0 1 -16.926 0 Z" bx:shape="ring 733.418 243.202 8.463 9.377 14.104 15.629 1@bf1d9379" style="fill: rgb(216, 216, 216); stroke: rgb(0, 0, 0); stroke-width: 1;"/>
   <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px;" transform="matrix(0.955154, 0, 0, 1.030544, 425.197662, -90.640999)">users-queue</text>
