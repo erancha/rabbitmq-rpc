@@ -1,5 +1,7 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using TodoApp.Shared.Models;
+using TodoApp.Shared.Messages;
 
 namespace TodoApp.WebApi.Controllers;
 
@@ -16,33 +18,58 @@ public abstract class BaseApiController : ControllerBase
 
     /// <summary>
     /// Handles RPC responses by converting them to appropriate HTTP responses.
-    /// For success responses, returns HTTP 200 with no content.
+    /// For success responses:
     /// For error responses:
     /// 1. Maps RPC error kinds to HTTP status codes (404 for NOT_FOUND, 400 for VALIDATION, 500 for others)
     /// 2. Creates a standardized error response that excludes internal error kinds
     /// </summary>
     /// <param name="result">The RPC response to handle</param>
     /// <returns>
-    /// Success response: 200 OK with no content
+    /// Success response: 200 OK with data if present, createdId if available, or no content
     /// Error response: { success: false, errorMessage: string }
     /// </returns>
-    protected IActionResult HandleRpcResponse(RpcResponse result)
+
+
+    protected IActionResult HandleRpcResponse(string responseJson)
     {
-        _logger.LogInformation("Handling RPC response: {@Result}", result);
+        _logger.LogInformation("Handling RPC response: {Response}", responseJson);
 
-        if (result.Success)
-            return result.CreatedId.HasValue
-                ? Ok(new { createdId = result.CreatedId.Value })
-                : Ok();
+        try
+        {
+            // Try to deserialize as generic response first
+            var genericResult = JsonDocument.Parse(responseJson);
+            var isSuccess = genericResult.RootElement.GetProperty("Success").GetBoolean();
+            
+            if (!isSuccess)
+            {
+                // Handle error response
+                var error = genericResult.RootElement.GetProperty("Error").Deserialize<RpcError>();
+                var statusCode = GetStatusCode(error?.Kind);
+                return StatusCode(statusCode, new { success = false, errorMessage = error?.Message });
+            }
 
-        // Map internal error kind to HTTP status code
-        var statusCode = GetStatusCode(result.Error?.Kind);
+            // Handle success response
+            if (genericResult.RootElement.TryGetProperty("Data", out var dataElement))
+            {
+                // Return the data if it exists
+                return Ok(dataElement.Deserialize<object>());
+            }
+            else if (genericResult.RootElement.TryGetProperty("CreatedId", out var createdIdElement) && 
+                     !createdIdElement.ValueKind.Equals(JsonValueKind.Null))
+            {
+                // Return createdId if it exists and is not null
+                return Ok(new { createdId = createdIdElement.GetInt32() });
+            }
+            
+            // Return empty success response
+            return Ok();
 
-        // Create standardized error response without exposing internal error kinds
-        var response = new { errorMessage = result.Error?.Message };
-
-        // _logger.LogWarning("Returning error response with {result}: {@Response}", result, response);
-        return StatusCode(statusCode, response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error handling RPC response");
+            return StatusCode(500, new { success = false, errorMessage = "Error processing response" });
+        }
     }
 
     protected static int GetStatusCode(string? kind) =>

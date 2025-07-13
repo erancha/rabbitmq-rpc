@@ -15,3 +15,7 @@ public class UpdateUserData
 }
 
 public record DeleteUserMessage(int Id);
+
+public record GetAllUsersMessage;
+
+public record GetUserByIdMessage(int Id);

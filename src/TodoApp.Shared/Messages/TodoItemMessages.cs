@@ -16,3 +16,5 @@ public class UpdateTodoItemData
 }
 
 public record DeleteTodoItemMessage(int Id);
+
+public record GetTodosByUserIdMessage(int UserId);

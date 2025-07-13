@@ -27,7 +27,7 @@ public class TodoItemsController : BaseApiController
     }
 
     [HttpPost]
-    public IActionResult CreateTodoItem([FromBody] CreateTodoItemMessage message)
+    public async Task<IActionResult> CreateTodoItem([FromBody] CreateTodoItemMessage message)
     {
         var validation = ValidateCreateTodoItem(message);
         var localResponse = HandleLocalResponse(validation);
@@ -36,7 +36,7 @@ public class TodoItemsController : BaseApiController
 
         try
         {
-            var result = _messageService.PublishMessageRpc<CreateTodoItemMessage>(
+            var result = await _messageService.PublishMessageRpc<CreateTodoItemMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.Todo
             );
@@ -50,7 +50,7 @@ public class TodoItemsController : BaseApiController
     }
 
     [HttpPut("{id}")]
-    public IActionResult UpdateTodoItem(int id, [FromBody] UpdateTodoItemData data)
+    public async Task<IActionResult> UpdateTodoItem(int id, [FromBody] UpdateTodoItemData data)
     {
         var validation = ValidateUpdateTodoItem(id, data);
         var localResponse = HandleLocalResponse(validation);
@@ -60,7 +60,7 @@ public class TodoItemsController : BaseApiController
         var message = new UpdateTodoItemMessage { Id = id, Data = data };
         try
         {
-            var result = _messageService.PublishMessageRpc<UpdateTodoItemMessage>(
+            var result = await _messageService.PublishMessageRpc<UpdateTodoItemMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.Todo
             );
@@ -74,7 +74,7 @@ public class TodoItemsController : BaseApiController
     }
 
     [HttpDelete("{id}")]
-    public IActionResult DeleteTodoItem(int id)
+    public async Task<IActionResult> DeleteTodoItem(int id)
     {
         var validation = ValidateDeleteTodoItem(id);
         var localResponse = HandleLocalResponse(validation);
@@ -84,7 +84,7 @@ public class TodoItemsController : BaseApiController
         try
         {
             var message = new DeleteTodoItemMessage(id);
-            var result = _messageService.PublishMessageRpc<DeleteTodoItemMessage>(
+            var result = await _messageService.PublishMessageRpc<DeleteTodoItemMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.Todo
             );
@@ -93,6 +93,30 @@ public class TodoItemsController : BaseApiController
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error publishing delete todo item message");
+            return StatusCode(500, "Error processing request");
+        }
+    }
+
+    [HttpGet("user/{userId}")]
+    public async Task<IActionResult> GetTodosByUserId(int userId)
+    {
+        var validation = ValidateGetTodosByUserId(userId);
+        var localResponse = HandleLocalResponse(validation);
+        if (localResponse != null)
+            return localResponse;
+
+        try
+        {
+            var message = new GetTodosByUserIdMessage(userId);
+            var result = await _messageService.PublishMessageRpc<GetTodosByUserIdMessage>(
+                message,
+                RabbitMQShared.RoutingKeys.Todo
+            );
+            return HandleRpcResponse(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error publishing get todos by user id message");
             return StatusCode(500, "Error processing request");
         }
     }
@@ -129,7 +153,15 @@ public class TodoItemsController : BaseApiController
     private LocalValidationResult ValidateDeleteTodoItem(int id)
     {
         if (id <= 0)
-            return new LocalValidationResult(false, "Invalid todo item ID");
+            return new LocalValidationResult(false, "Id must be greater than 0");
+
+        return new LocalValidationResult(true);
+    }
+
+    private LocalValidationResult ValidateGetTodosByUserId(int userId)
+    {
+        if (userId <= 0)
+            return new LocalValidationResult(false, "User Id must be greater than 0");
 
         return new LocalValidationResult(true);
     }

@@ -8,6 +8,7 @@ using TodoApp.Shared.Data;
 using TodoApp.Shared.Messages;
 using TodoApp.Shared.Models;
 using TodoApp.WorkerService.Helpers;
+using static TodoApp.Shared.Messages.RpcErrorKind;
 
 namespace TodoApp.WorkerService.Services;
 
@@ -125,6 +126,55 @@ public class UserMessageHandler : IHostedService, IDisposable
                         );
                     break;
 
+                case nameof(GetAllUsersMessage):
+                    try
+                    {
+                        var users = await dbContext.Users.ToListAsync();
+                        var response = new GetAllUsersResponse { Users = users };
+                        return RpcResponseHelper.CreateSuccessResponse(response);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error getting all users");
+                        return RpcResponseHelper.CreateErrorResponse<GetAllUsersResponse>(
+                            "Database error",
+                            "INTERNAL_ERROR"
+                        );
+                    }
+
+                case nameof(GetUserByIdMessage):
+                    var getUserMessage = JsonSerializer.Deserialize<GetUserByIdMessage>(message);
+                    if (getUserMessage != null)
+                    {
+                        try
+                        {
+                            var user = await GetUserById(dbContext, getUserMessage);
+                            if (user == null)
+                                return RpcResponseHelper.CreateErrorResponse<GetUserByIdResponse>(
+                                    "User not found",
+                                    NOT_FOUND
+                                );
+                            var userResponse = new GetUserByIdResponse { User = user };
+                            return RpcResponseHelper.CreateSuccessResponse(userResponse);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(
+                                ex,
+                                "Error getting user by id {Id}",
+                                getUserMessage.Id
+                            );
+                            return RpcResponseHelper.CreateErrorResponse<GetUserByIdResponse>(
+                                "Database error",
+                                "INTERNAL_ERROR"
+                            );
+                        }
+                    }
+                    else
+                        throw new InvalidOperationException(
+                            $"Deserialization failed for GetUserByIdMessage. Message: {message}"
+                        );
+
                 default:
                     _logger.LogWarning("Unknown message type: {MessageType}", messageType);
                     throw new InvalidOperationException($"Unknown message type: {messageType}");
@@ -182,6 +232,16 @@ public class UserMessageHandler : IHostedService, IDisposable
         dbContext.Users.Remove(user);
         await dbContext.SaveChangesAsync();
         _logger.LogInformation("Deleted user with ID {UserId}", user.Id);
+    }
+
+    private async Task<List<User>> GetAllUsers(TodoDbContext dbContext)
+    {
+        return await dbContext.Users.ToListAsync();
+    }
+
+    private async Task<User?> GetUserById(TodoDbContext dbContext, GetUserByIdMessage message)
+    {
+        return await dbContext.Users.FindAsync(message.Id);
     }
 
     public void Dispose() { }

@@ -3,6 +3,7 @@ using RabbitMQ.Client;
 using TodoApp.Shared.Data;
 using TodoApp.WorkerService.Configuration;
 using TodoApp.WorkerService.Services;
+using TodoApp.WorkerService.Helpers;
 using RabbitMQShared = TodoApp.Shared.Configuration.RabbitMQ;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -95,6 +96,11 @@ builder.Services.AddHostedService<TodoItemMessageHandler>();
 // Register database initialization service to run migrations before the application starts
 builder.Services.AddHostedService<DatabaseInitializationService>();
 var host = builder.Build();
+
+// Set up logger for RpcResponseHelper
+var loggerFactory = host.Services.GetRequiredService<ILoggerFactory>();
+RpcResponseHelper.SetLogger(loggerFactory.CreateLogger(nameof(RpcResponseHelper)));
+
 await host.RunAsync();
 // The host:
 // 1. Starts all registered hosted services by calling their StartAsync methods in order

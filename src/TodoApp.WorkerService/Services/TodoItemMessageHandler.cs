@@ -125,6 +125,20 @@ public class TodoItemMessageHandler : IHostedService, IDisposable
                         );
                     break;
 
+                case nameof(GetTodosByUserIdMessage):
+                    var getTodosMessage = JsonSerializer.Deserialize<GetTodosByUserIdMessage>(
+                        message
+                    );
+                    if (getTodosMessage != null)
+                    {
+                        var todos = await GetTodosByUserId(dbContext, getTodosMessage);
+                        return RpcResponseHelper.CreateSuccessResponse(todos);
+                    }
+                    else
+                        throw new InvalidOperationException(
+                            $"Deserialization failed for GetTodosByUserIdMessage. Message: {message}"
+                        );
+
                 default:
                     _logger.LogWarning("Unknown message type: {MessageType}", messageType);
                     throw new InvalidOperationException($"Unknown message type: {messageType}");
@@ -200,6 +214,29 @@ public class TodoItemMessageHandler : IHostedService, IDisposable
         todoItem.DeletedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync();
         _logger.LogInformation("Deleted todo item with ID {TodoItemId}", todoItem.Id);
+    }
+
+    private async Task<List<TodoItemResponse>> GetTodosByUserId(
+        TodoDbContext dbContext,
+        GetTodosByUserIdMessage message
+    )
+    {
+        var todos = await dbContext
+            .TodoItems.Where(t => t.UserId == message.UserId && !t.IsDeleted)
+            .OrderByDescending(t => t.CreatedAt)
+            .ToListAsync();
+
+        return todos.Select(t => new TodoItemResponse
+        {
+            Id = t.Id,
+            Title = t.Title,
+            Description = t.Description,
+            IsCompleted = t.IsCompleted,
+            CreatedAt = t.CreatedAt,
+            CompletedAt = t.CompletedAt,
+            IsDeleted = t.IsDeleted,
+            DeletedAt = t.DeletedAt
+        }).ToList();
     }
 
     public void Dispose() { }
