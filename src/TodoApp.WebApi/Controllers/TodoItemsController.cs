@@ -10,7 +10,7 @@ using RabbitMQShared = TodoApp.Shared.Configuration.RabbitMQ;
 namespace TodoApp.WebApi.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/v1/[controller]")]
 public class TodoItemsController : BaseApiController
 {
     private readonly IRabbitMQMessageService _messageService;

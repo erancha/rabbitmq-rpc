@@ -5,12 +5,12 @@
 <!-- toc -->
 
 - [Task Overview:](#task-overview)
-  * [Requirements:](#requirements)
-  * [Technologies:](#technologies)
-  * [Deliverables:](#deliverables)
+  - [Requirements:](#requirements)
+  - [Technologies:](#technologies)
+  - [Deliverables:](#deliverables)
 - [Architecture](#architecture)
-  * [RabbitMQ Communication Pattern](#rabbitmq-communication-pattern)
-  * [PostgreSQL Schema Design](#postgresql-schema-design)
+  - [RabbitMQ Communication Pattern](#rabbitmq-communication-pattern)
+  - [PostgreSQL Schema Design](#postgresql-schema-design)
 - [Prerequisites](#prerequisites)
 - [Running the Application](#running-the-application)
 - [Project Structure](#project-structure)
@@ -160,3 +160,38 @@ The following services will be available:
 - Entity Framework Core with Code-First approach
 - RabbitMQ message-based communication between services
 - Swagger UI for API documentation and testing
+
+## Testing
+
+powershell
+
+```powershell
+# Create users
+for ($i=1; $i -le 2; $i++) { $body = @{ username="user$i"; email="user$i@gmail.com" } | ConvertTo-Json; Invoke-RestMethod -Uri 'http://localhost:5000/api/v1/Users' -Method POST -Headers @{"accept"="*/*"; "Content-Type"="application/json"} -Body $body }
+
+
+# Create todos
+for ($i=1; $i -le 10; $i++) { $body = @{ title="Todo $i"; description="Description for todo $i"; userId=1 } | ConvertTo-Json; Invoke-RestMethod -Uri 'http://localhost:5000/api/v1/TodoItems' -Method POST -Headers @{"accept"="*/*"; "Content-Type"="application/json"} -Body $body }
+```
+
+bash
+
+```bash
+# Create users
+for i in {1..2}; do
+  curl -X 'POST' \
+    'http://localhost:5000/api/v1/Users' \
+    -H 'accept: */*' \
+    -H 'Content-Type: application/json' \
+    -d "{\"username\": \"user$i\", \"email\": \"user$i@gmail.com\"}"
+done
+
+# Create todos
+for i in {1..10}; do
+  curl -X 'POST' \
+    'http://localhost:5000/api/v1/TodoItems' \
+    -H 'accept: */*' \
+    -H 'Content-Type: application/json' \
+    -d "{\"title\": \"Todo $i\", \"description\": \"Description for todo $i\", \"userId\": 1}"
+done
+```
