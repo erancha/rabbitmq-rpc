@@ -2,8 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using RabbitMQ.Client;
 using TodoApp.Shared.Data;
 using TodoApp.WorkerService.Configuration;
-using TodoApp.WorkerService.Services;
 using TodoApp.WorkerService.Helpers;
+using TodoApp.WorkerService.Services;
 using RabbitMQShared = TodoApp.Shared.Configuration.RabbitMQ;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -59,19 +59,13 @@ channel.ExchangeDeclare(
 // QueueDeclare options:
 // - durable: queue and messages survive broker restarts (default=false)
 // - autoDelete: delete queue when last consumer disconnects (default=false)
-// - exclusive: allow multiple connections (default=false)
+// - exclusive: only allow access from the declaring connection (default: true)
 // - arguments: optional settings like TTL, max length (default=null)
 
 // Declare queues
-channel.QueueDeclare(
-    queue: RabbitMQConfig.UsersQueueName,
-    durable: true // queue and messages survive broker restarts
-);
+channel.QueueDeclare(queue: RabbitMQConfig.UsersQueueName, durable: true, exclusive: false, autoDelete: false);
 
-channel.QueueDeclare(
-    queue: RabbitMQConfig.TodosQueueName,
-    durable: true // queue and messages survive broker restarts
-);
+channel.QueueDeclare(queue: RabbitMQConfig.TodosQueueName, durable: true, exclusive: false, autoDelete: false);
 
 // Bind queues with direct routing keys
 channel.QueueBind(

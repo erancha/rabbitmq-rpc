@@ -5,8 +5,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using TodoApp.Shared.Models;
 using TodoApp.Shared.Messages;
+using TodoApp.Shared.Models;
 using TodoApp.WebApi.Configuration;
 using RabbitMQShared = TodoApp.Shared.Configuration.RabbitMQ;
 
@@ -82,12 +82,9 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         // QueueDeclare options:
         // - durable: queue and messages survive broker restarts (default=false)
         // - autoDelete: delete queue when last consumer disconnects (default=false)
-        // - exclusive: allow multiple connections (default=false)
+        // - exclusive: only allow access from the declaring connection (default: true)
         // - arguments: optional settings like TTL, max length (default=null)
-        _channel.QueueDeclare(
-            queue: _replyQueueName,
-            durable: true // queue and messages survive broker restarts
-        );
+        _channel.QueueDeclare(queue: _replyQueueName, durable: true);
 
         // Set up consumer for replies
         var consumer = new EventingBasicConsumer(_channel);
