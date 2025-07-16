@@ -1,4 +1,5 @@
 using RabbitMQ.Client;
+using TodoApp.Shared.Helpers;
 using TodoApp.WebApi.Configuration;
 using TodoApp.WebApi.Services;
 using RabbitMQShared = TodoApp.Shared.Configuration.RabbitMQ;
@@ -10,83 +11,46 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Configure WebAPI settings
-builder.Services.Configure<RabbitMQShared.Config>(
-    builder.Configuration.GetSection("RabbitMQConfig")
-);
-
 // Configure RabbitMQ
+builder.Services.Configure<RabbitMQShared.Config>(builder.Configuration.GetSection("RabbitMQ"));
 var rabbitMQConfig =
     builder.Configuration.GetSection("RabbitMQ").Get<RabbitMQShared.Config>()
     ?? new RabbitMQShared.Config();
 
-var factory = new ConnectionFactory
-{
-    HostName = rabbitMQConfig.Host,
-    UserName = rabbitMQConfig.Username,
-    Password = rabbitMQConfig.Password,
-    Port = rabbitMQConfig.Port,
-};
+(IConnection connection, IModel channel) =
+    TodoApp.Shared.Helpers.RabbitMQConnections.CreateConnection(rabbitMQConfig);
 
-IConnection? connection = null;
-for (int retry = 1; retry <= 5; retry++)
-{
-    try
-    {
-        connection = factory.CreateConnection();
-        Console.WriteLine($"Successfully connected to RabbitMQ on attempt {retry}");
-        break;
-    }
-    catch (Exception)
-    {
-        if (retry == 5)
-            throw;
-        var delay = TimeSpan.FromSeconds(Math.Pow(2, retry - 1)); // 1, 2, 4, 8, 16 seconds
-        Thread.Sleep(delay);
-    }
-}
-
-if (connection is null)
-    throw new InvalidOperationException("Failed to establish RabbitMQ connection");
-
-var channel = connection.CreateModel();
-
-// Register RabbitMQ services
 builder.Services.AddSingleton<IModel>(channel);
 builder.Services.AddSingleton<IRabbitMQMessageService, RabbitMQMessageService>();
 
-// Declare exchange
-// Setting durable: true means the exchange will survive a RabbitMQ server restart
-// The exchange definition is persisted to disk and restored on server startup
-channel.ExchangeDeclare(
-    exchange: RabbitMQShared.Config.AppExchangeName,
-    type: RabbitMQShared.Config.AppExchangeType,
-    durable: true
-);
-
-builder.Services.AddSingleton<IModel>(channel);
-
-var app = builder.Build();
+// Build the application - this finalizes service registration and creates the root service provider.
+// After this point, we can no longer register services, and the application can start resolving them.
+var host = builder.Build();
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+if (host.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    host.UseSwagger();
+    host.UseSwaggerUI();
 
     // Redirect root to Swagger UI
-    app.MapGet("/", () => Results.Redirect("/swagger"));
+    host.MapGet("/", () => Results.Redirect("/swagger"));
 }
 
-app.UseHttpsRedirection();
-app.UseAuthorization();
-app.MapControllers();
+host.UseHttpsRedirection();
+host.UseAuthorization();
+host.MapControllers();
 
-app.Run();
+// Register cleanup on application shutdown
+host.Services.GetRequiredService<IHostApplicationLifetime>()
+    .ApplicationStopping.Register(() =>
+    {
+        channel?.Close();
+        connection?.Close();
+    });
 
-// Cleanup
-AppDomain.CurrentDomain.ProcessExit += (s, e) =>
-{
-    channel?.Close();
-    connection?.Close();
-};
+// DI Resolution happens in the following points:
+//   1. When ASP.NET Core resolves services during startup,
+//   2. When controllers are created for each request (resolving their dependencies),
+//   3. When those services themselves resolve dependencies during runtime.
+await host.RunAsync();

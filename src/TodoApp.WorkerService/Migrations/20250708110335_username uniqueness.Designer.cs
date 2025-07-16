@@ -5,15 +5,15 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using TodoApp.Shared.Data;
+using TodoApp.WorkerService.Data;
 
 #nullable disable
 
 namespace TodoApp.Shared.Migrations
 {
     [DbContext(typeof(TodoDbContext))]
-    [Migration("20250707214947_MigrationName")]
-    partial class MigrationName
+    [Migration("20250708110335_UsernameUniqueness")]
+    partial class UsernameUniqueness
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -87,6 +87,9 @@ namespace TodoApp.Shared.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Username")
+                        .IsUnique();
 
                     b.ToTable("Users");
                 });

@@ -11,6 +11,7 @@
 - [Architecture](#architecture)
   - [RabbitMQ Communication Pattern](#rabbitmq-communication-pattern)
   - [PostgreSQL Schema Design](#postgresql-schema-design)
+  - [PostgreSQL startup](#postgresql-startup)
 - [Prerequisites](#prerequisites)
 - [Running the Application](#running-the-application)
 - [Project Structure](#project-structure)
@@ -59,13 +60,26 @@ Focus on designing a clean and minimal database schema and defining a robust com
 
 ## Architecture
 
-See the diagram for how the topic exchange routes messages to Workers' queues based on routing patterns, while temporary reply queues handle RPC responses.
+See the diagram for how the WebAPI uses [RabbitMQ RPC Pattern](#rabbitmq-communication-pattern) to delegate requests it receives to the Worker Service and wait for responses.
 
 ![Todo App Architecture Diagram](architecture-diagram.svg)
 
 ### RabbitMQ Communication Pattern
 
-This application uses RabbitMQ's Topic Exchange pattern with RPC (Remote Procedure Call) for communication between the Web API and Worker services. Messages are published to a topic exchange with specific routing keys, and the Worker Service binds its queues to patterns to receive relevant messages. Each WebApi instance maintains a durable reply queue, with correlation IDs for routing RPC responses, enabling the Worker to process requests and send responses back to the Web API.
+This application uses RabbitMQ's Direct Exchange with RPC (Remote Procedure Call) for communication between the Web API and Worker services. The flow is:
+
+1. The WebApi publishes messages to the exchange with specific routing keys, and assigns each request a unique correlation ID
+2. The Worker Service:
+
+   2.1. Binds its queues to routing keys and receives relevant messages
+
+   2.2. Processes each request and sends back a response, including the original correlation ID
+
+3. The WebApi:
+
+   3.1. Uses the correlation ID to locate the pending request and complete it
+
+   3.2. Returns the result to the REST API consumer
 
 **Key Concepts:**
 
@@ -102,18 +116,18 @@ This application uses RabbitMQ's Topic Exchange pattern with RPC (Remote Procedu
 ### PostgreSQL Schema Design
 
 The application uses a clean, normalized database schema implemented in PostgreSQL.
-The schema definitions can be found in [TodoApp.Shared/Models/](TodoApp.Shared/Models/) and migrations in [TodoApp.Shared/Migrations/](TodoApp.Shared/Migrations/).
+The schema definitions are managed by the Worker Service and can be found in [Models/](src/TodoApp.Shared/Models/), [Migrations/](src/TodoApp.WorkerService/Migrations/), and [TodoDbContext.cs](src/TodoApp.WorkerService/Data/TodoDbContext.cs)
 
 **Core Entities:**
 
-1. **User** ([TodoApp.Shared/Models/User.cs](TodoApp.Shared/Models/User.cs)):
+1. **User** ([Models/User.cs](src/TodoApp.Shared/Models/User.cs)):
 
-   - Primary key: `Id` (integer)
-   - Unique constraints: `Username`, `Email`
+   - Primary key: `Id` (integer) - _defined in entity model and configured in DbContext_
+   - Unique constraints: `Username`, `Email` - _configured in [TodoDbContext.cs](src/TodoApp.WorkerService/Data/TodoDbContext.cs) using Fluent API_ (see note below)
    - Timestamps: `CreatedAt`
-   - One-to-many relationship with TodoItems
+   - One-to-many relationship with TodoItems - _configured in [TodoDbContext.cs](src/TodoApp.WorkerService/Data/TodoDbContext.cs) using Fluent API_ (see note below)
 
-2. **TodoItem** ([TodoApp.Shared/Models/TodoItem.cs](TodoApp.Shared/Models/TodoItem.cs)):
+2. **TodoItem** ([Models/TodoItem.cs](src/TodoApp.Shared/Models/TodoItem.cs)):
    - Primary key: `Id` (integer)
    - Foreign key: `UserId` (references User)
    - Soft delete support: `IsDeleted`, `DeletedAt`
@@ -122,23 +136,50 @@ The schema definitions can be found in [TodoApp.Shared/Models/](TodoApp.Shared/M
 
 **Schema Characteristics:**
 
+> **Note about Entity Framework Core's Fluent API:**  
+> The Fluent API is Entity Framework Core's method for configuring database relationships and constraints using method chaining in C#. For example:
+>
+> ```csharp
+> modelBuilder.Entity<User>(entity => {
+>     entity.HasKey(e => e.Id);                    // Sets primary key
+>     entity.HasIndex(e => e.Username).IsUnique(); // Sets unique constraint
+>     entity.HasMany<TodoItem>()                   // Sets one-to-many relationship
+>           .WithOne()
+>           .HasForeignKey(e => e.UserId);
+> });
+> ```
+>
+> This approach provides more control and flexibility than using attributes/annotations in the model classes.
+
 - Minimal and focused tables with clear responsibilities
 - Proper foreign key constraints for referential integrity
 - Soft delete pattern for data retention
 - Timestamp fields for audit tracking
 - Unique constraints to maintain data integrity
 
+### PostgreSQL startup
+
+The worker service ensures database availability before processing messages:
+
+1. [DatabaseInitializationService](src/TodoApp.WorkerService/Services/DatabaseInitializationService.cs) runs migrations and verifies database readiness
+2. [Message handlers](src/TodoApp.WorkerService/Services/BaseMessageHandler.cs) wait for an [InitializationSignal](src/TodoApp.WorkerService/Services/InitializationSignal.cs) before consuming messages
+3. Once database is ready, the signal is triggered and handlers start processing
+
 ## Prerequisites
 
 - Docker and Docker Compose
-- .NET 9.0 SDK (for development)
+- .NET 8.0 SDK
 
 ## Running the Application
 
 Run the following script to check dependencies and start the application:
 
+```bash
+./start-todo-app.sh
+```
+
 ```powershell
-.\start-todo-app.ps1
+./start-todo-app.ps1
 ```
 
 The following services will be available:
@@ -160,38 +201,3 @@ The following services will be available:
 - Entity Framework Core with Code-First approach
 - RabbitMQ message-based communication between services
 - Swagger UI for API documentation and testing
-
-## Testing
-
-powershell
-
-```powershell
-# Create users
-for ($i=1; $i -le 2; $i++) { $body = @{ username="user$i"; email="user$i@gmail.com" } | ConvertTo-Json; Invoke-RestMethod -Uri 'http://localhost:5000/api/v1/Users' -Method POST -Headers @{"accept"="*/*"; "Content-Type"="application/json"} -Body $body }
-
-
-# Create todos
-for ($i=1; $i -le 10; $i++) { $body = @{ title="Todo $i"; description="Description for todo $i"; userId=1 } | ConvertTo-Json; Invoke-RestMethod -Uri 'http://localhost:5000/api/v1/TodoItems' -Method POST -Headers @{"accept"="*/*"; "Content-Type"="application/json"} -Body $body }
-```
-
-bash
-
-```bash
-# Create users
-for i in {1..2}; do
-  curl -X 'POST' \
-    'http://localhost:5000/api/v1/Users' \
-    -H 'accept: */*' \
-    -H 'Content-Type: application/json' \
-    -d "{\"username\": \"user$i\", \"email\": \"user$i@gmail.com\"}"
-done
-
-# Create todos
-for i in {1..10}; do
-  curl -X 'POST' \
-    'http://localhost:5000/api/v1/TodoItems' \
-    -H 'accept: */*' \
-    -H 'Content-Type: application/json' \
-    -d "{\"title\": \"Todo $i\", \"description\": \"Description for todo $i\", \"userId\": 1}"
-done
-```

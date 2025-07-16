@@ -93,13 +93,10 @@ public class RabbitMQMessageService : IRabbitMQMessageService
             var correlationId = ea.BasicProperties.CorrelationId;
             var response = Encoding.UTF8.GetString(ea.Body.ToArray());
 
-            if (_config.EnableRequestLogging)
-            {
-                _logger.LogInformation(
-                    "Received RPC response with correlation ID {CorrelationId}",
-                    correlationId
-                );
-            }
+            _logger.LogInformation(
+                "Received RPC response with correlation ID {CorrelationId}",
+                correlationId
+            );
 
             // If found in _pendingRequests, complete the task with the response value
             // This unblocks the waiting PublishMessageRpc call
@@ -150,14 +147,10 @@ public class RabbitMQMessageService : IRabbitMQMessageService
 
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message));
 
-        if (_config.EnableRequestLogging)
-        {
-            _logger.LogInformation(
-                "Sending RPC request for message type {MessageType} with correlation ID {CorrelationId}",
-                typeof(T).Name,
-                correlationId
-            );
-        }
+        _logger.LogInformation(
+            "Publishing RPC request with correlation ID {CorrelationId}",
+            correlationId
+        );
 
         _channel.BasicPublish(
             exchange: RabbitMQShared.Config.AppExchangeName,
@@ -176,13 +169,11 @@ public class RabbitMQMessageService : IRabbitMQMessageService
 
         if (completedTask == timeoutTask)
         {
-            if (_config.EnableRequestLogging)
-            {
-                _logger.LogWarning(
-                    "RPC request timed out after {TimeoutSeconds} seconds. Request will be processed when worker service recovers",
-                    _config.RpcTimeoutSeconds
-                );
-            }
+            _logger.LogWarning(
+                "Request with correlation ID {CorrelationId} timed out after {TimeoutSeconds} seconds",
+                correlationId,
+                _config.RpcTimeoutSeconds
+            );
 
             return JsonSerializer.Serialize(
                 new RpcResponse

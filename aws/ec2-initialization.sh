@@ -58,7 +58,7 @@ curl -SL https://github.com/docker/compose/releases/latest/download/docker-compo
 chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
 # Run docker compose
-cd /opt/td
+cd "/opt/$STACK_NAME"
 docker compose up -d
 
 # Wait for services to fully start
