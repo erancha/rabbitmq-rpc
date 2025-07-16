@@ -1,94 +1,31 @@
-using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using RabbitMQ.Client;
-using RabbitMQ.Client.Events;
-using TodoApp.Shared.Data;
 using TodoApp.Shared.Messages;
 using TodoApp.Shared.Models;
-using TodoApp.WorkerService.Helpers;
-using static TodoApp.Shared.Messages.RpcErrorKind;
+using TodoApp.WorkerService.Data;
 
 namespace TodoApp.WorkerService.Services;
 
-public class UserMessageHandler : IHostedService, IDisposable
+public class UserMessageHandler : BaseMessageHandler
 {
     private const string CurrentQueueName = Configuration.RabbitMQConfig.UsersQueueName;
-    private readonly IModel _channel;
-    private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ILogger<UserMessageHandler> _logger;
 
     public UserMessageHandler(
         IModel channel,
         IServiceScopeFactory scopeFactory,
-        ILogger<UserMessageHandler> logger
+        ILogger<UserMessageHandler> logger,
+        InitializationSignal initializationSignal
     )
-    {
-        _channel = channel;
-        _scopeFactory = scopeFactory;
-        _logger = logger;
-    }
+        : base(CurrentQueueName, channel, scopeFactory, logger, initializationSignal) { }
 
-    public Task StartAsync(CancellationToken cancellationToken)
-    {
-        _logger.LogInformation(
-            "Starting to consume messages from {CurrentQueueName}",
-            CurrentQueueName
-        );
-        _channel.BasicQos(prefetchSize: 0, prefetchCount: 1, global: false); // Limit to processing one message at a time per consumer
-        var consumer = new EventingBasicConsumer(_channel);
-        _channel.BasicConsume(queue: CurrentQueueName, autoAck: false, consumer: consumer);
-
-        consumer.Received += async (model, ea) =>
-        {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-            try
-            {
-                var messageType = ea.BasicProperties?.Type;
-                if (string.IsNullOrEmpty(messageType))
-                {
-                    _logger.LogWarning("Message type is missing");
-                    var errorResponse = RpcResponseHelper.CreateErrorResponse(
-                        new InvalidOperationException("Message type is missing")
-                    );
-                    RpcResponseHelper.SendRpcResponse(_channel, ea, errorResponse);
-                    return;
-                }
-
-                var message = Encoding.UTF8.GetString(ea.Body.ToArray());
-                var rpcResponse = await ProcessMessage(messageType, message);
-                _channel.BasicAck(ea.DeliveryTag, multiple: false);
-                RpcResponseHelper.SendRpcResponse(_channel, ea, rpcResponse);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing user message");
-                var rpcResponse = RpcResponseHelper.CreateErrorResponse(ex);
-                RpcResponseHelper.SendRpcResponse(_channel, ea, rpcResponse);
-                _channel.BasicNack(ea.DeliveryTag, false, false); // FFU: Only requeue on approved errors.
-            }
-        };
-
-        _logger.LogInformation("Consumer started for {CurrentQueueName}", CurrentQueueName);
-        return Task.CompletedTask;
-    }
-
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("Stopping consumer for {CurrentQueueName}", CurrentQueueName);
-        return Task.CompletedTask;
-    }
-
-    private async Task<string> ProcessMessage(string messageType, string message)
+    protected override async Task<string> ProcessMessage(string messageType, string message)
     {
         try
         {
             _logger.LogInformation("Processing message of type {MessageType}", messageType);
 
+            // Create a new scope to get a fresh DbContext instance for each message
             using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<TodoDbContext>();
 
@@ -99,7 +36,7 @@ public class UserMessageHandler : IHostedService, IDisposable
                     if (createMessage != null)
                     {
                         var id = await CreateUser(dbContext, createMessage);
-                        return RpcResponseHelper.CreateSuccessResponse(id);
+                        return CreateSuccessResponse(id);
                     }
                     else
                         throw new InvalidOperationException(
@@ -131,12 +68,12 @@ public class UserMessageHandler : IHostedService, IDisposable
                     {
                         var users = await dbContext.Users.ToListAsync();
                         var response = new GetAllUsersResponse { Users = users };
-                        return RpcResponseHelper.CreateSuccessResponse(response);
+                        return CreateSuccessResponse(response);
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Error getting all users");
-                        return RpcResponseHelper.CreateErrorResponse<GetAllUsersResponse>(
+                        return CreateErrorResponse<GetAllUsersResponse>(
                             "Database error",
                             "INTERNAL_ERROR"
                         );
@@ -150,12 +87,12 @@ public class UserMessageHandler : IHostedService, IDisposable
                         {
                             var user = await GetUserById(dbContext, getUserMessage);
                             if (user == null)
-                                return RpcResponseHelper.CreateErrorResponse<GetUserByIdResponse>(
+                                return CreateErrorResponse<GetUserByIdResponse>(
                                     "User not found",
-                                    NOT_FOUND
+                                    RpcErrorKind.NOT_FOUND.ToString()
                                 );
                             var userResponse = new GetUserByIdResponse { User = user };
-                            return RpcResponseHelper.CreateSuccessResponse(userResponse);
+                            return CreateSuccessResponse(userResponse);
                         }
                         catch (Exception ex)
                         {
@@ -164,7 +101,7 @@ public class UserMessageHandler : IHostedService, IDisposable
                                 "Error getting user by id {Id}",
                                 getUserMessage.Id
                             );
-                            return RpcResponseHelper.CreateErrorResponse<GetUserByIdResponse>(
+                            return CreateErrorResponse<GetUserByIdResponse>(
                                 "Database error",
                                 "INTERNAL_ERROR"
                             );
@@ -180,12 +117,12 @@ public class UserMessageHandler : IHostedService, IDisposable
                     throw new InvalidOperationException($"Unknown message type: {messageType}");
             }
 
-            return RpcResponseHelper.CreateSuccessResponse();
+            return CreateSuccessResponse();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing user message");
-            return RpcResponseHelper.CreateErrorResponse(ex);
+            return CreateErrorResponse(ex);
         }
     }
 
@@ -244,5 +181,5 @@ public class UserMessageHandler : IHostedService, IDisposable
         return await dbContext.Users.FindAsync(message.Id);
     }
 
-    public void Dispose() { }
+    public override void Dispose() { }
 }

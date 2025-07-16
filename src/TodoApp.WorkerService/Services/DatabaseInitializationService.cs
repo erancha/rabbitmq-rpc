@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using TodoApp.Shared.Data;
+using TodoApp.WorkerService.Data;
 
 namespace TodoApp.WorkerService.Services;
 
@@ -11,19 +11,23 @@ public class DatabaseInitializationService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<DatabaseInitializationService> _logger;
+    private readonly InitializationSignal _signal;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DatabaseInitializationService"/> class.
     /// </summary>
     /// <param name="serviceProvider">The service provider for dependency resolution.</param>
     /// <param name="logger">Logger for diagnostic information.</param>
+    /// <param name="signal">Initialization signal.</param>
     public DatabaseInitializationService(
         IServiceProvider serviceProvider,
-        ILogger<DatabaseInitializationService> logger
+        ILogger<DatabaseInitializationService> logger,
+        InitializationSignal signal
     )
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
+        _signal = signal;
     }
 
     /// <summary>
@@ -35,9 +39,8 @@ public class DatabaseInitializationService : IHostedService
     {
         try
         {
+            // Get DbContext and prepare for migration
             using var scope = _serviceProvider.CreateScope();
-
-            // First, ensure database is migrated
             var dbContext = scope.ServiceProvider.GetRequiredService<TodoDbContext>();
 
             _logger.LogInformation("Checking database connection...");
@@ -93,7 +96,12 @@ public class DatabaseInitializationService : IHostedService
 
             _logger.LogInformation("Database migrations completed");
 
+            // Simulate long initialization
+            // _logger.LogInformation("Simulating long initialization process...");
+            // await Task.Delay(TimeSpan.FromMinutes(1), cancellationToken);
+
             _logger.LogInformation("Database initialization completed");
+            _signal.MarkAsComplete();
         }
         catch (Exception ex)
         {

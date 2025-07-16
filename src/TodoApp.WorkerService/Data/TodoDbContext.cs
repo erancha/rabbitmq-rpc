@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using TodoApp.Shared.Models;
 
-namespace TodoApp.Shared.Data;
+namespace TodoApp.WorkerService.Data;
 
 public class TodoDbContext : DbContext
 {
