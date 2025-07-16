@@ -11,7 +11,7 @@
 #    - Run in PowerShell: wsl --version
 #    - If not installed: wsl --install
 #    - To upgrade: wsl --update
-#
+# 
 # 3. Recommended Linux Distribution Setup:
 #    - Ubuntu is recommended for this app (works well on both Intel/AMD)
 #    - Install Ubuntu from Microsoft Store or: wsl --install -d Ubuntu
