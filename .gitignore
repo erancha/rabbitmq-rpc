@@ -9,3 +9,5 @@ README-toc.cmd
 aws/aws-configure.ps1
 aws/test-deploy.ps1
 aws/test-deploy.sh
+jmeter/results.jtl
+jmeter/jmeter.log

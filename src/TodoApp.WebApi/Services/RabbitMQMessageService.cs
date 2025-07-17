@@ -37,8 +37,10 @@ public interface IRabbitMQMessageService
     /// <typeparam name="T">Type of the message to publish</typeparam>
     /// <param name="message">The message to publish</param>
     /// <param name="routingKey">The queue name to publish to</param>
+    /// <param name="executeIfTimeout">If true, the worker service will execute the request even if client times out.
+    /// Set to true for state-changing operations that should complete regardless of timeout.</param>
     /// <returns>The response message</returns>
-    Task<string> PublishMessageRpc<T>(T message, string routingKey);
+    Task<string> PublishMessageRpc<T>(T message, string routingKey, bool executeIfTimeout = false);
 }
 
 /// <summary>
@@ -132,7 +134,15 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         );
     }
 
-    public async Task<string> PublishMessageRpc<T>(T message, string routingKey)
+    /// <summary>
+    /// Publishes a message to a RabbitMQ queue and waits for a response using the RPC pattern.
+    /// </summary>
+    /// <param name="message">The message to publish</param>
+    /// <param name="routingKey">The queue name to publish to</param>
+    /// <param name="executeIfTimeout">If true, the workers service will execute the request even if client times out. 
+    /// Set to true for state-changing operations that should complete regardless of timeout.</param>
+    /// <returns>The response message</returns>
+    public async Task<string> PublishMessageRpc<T>(T message, string routingKey, bool executeIfTimeout = false)
     {
         var correlationId = Guid.NewGuid().ToString();
         var tcs = new TaskCompletionSource<string>();
@@ -144,6 +154,13 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         properties.CorrelationId = correlationId;
         properties.ReplyTo = _replyQueueName;
         properties.Type = typeof(T).Name;
+
+        properties.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        properties.Headers = new Dictionary<string, object>
+        {
+            { "timeout_seconds", _config.RpcTimeoutSeconds },
+            { "execute_if_timeout", executeIfTimeout }
+        };
 
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message));
 

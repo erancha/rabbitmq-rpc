@@ -208,3 +208,5 @@ for i in {1..2}; do
         echo -e "${RED}Failed to create todo item $i. Response: $TODO_RESPONSE${NC}"
     fi
 done
+
+# cd jmeter && ./run-test.sh && cd ..

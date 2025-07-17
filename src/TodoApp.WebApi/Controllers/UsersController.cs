@@ -35,7 +35,8 @@ public class UsersController : BaseApiController
         {
             var responseJson = await _messageService.PublishMessageRpc<CreateUserMessage>(
                 message,
-                RabbitMQShared.RoutingKeys.User
+                RabbitMQShared.RoutingKeys.User,
+                executeIfTimeout: true
             );
             return HandleRpcResponse(responseJson);
         }
@@ -59,7 +60,8 @@ public class UsersController : BaseApiController
         {
             var responseJson = await _messageService.PublishMessageRpc<UpdateUserMessage>(
                 message,
-                RabbitMQShared.RoutingKeys.User
+                RabbitMQShared.RoutingKeys.User,
+                executeIfTimeout: true
             );
             return HandleRpcResponse(responseJson);
         }
@@ -83,7 +85,8 @@ public class UsersController : BaseApiController
             var message = new DeleteUserMessage(id);
             var responseJson = await _messageService.PublishMessageRpc<DeleteUserMessage>(
                 message,
-                RabbitMQShared.RoutingKeys.User
+                RabbitMQShared.RoutingKeys.User,
+                executeIfTimeout: true
             );
             return HandleRpcResponse(responseJson);
         }
