@@ -38,7 +38,8 @@ public class TodoItemsController : BaseApiController
         {
             var result = await _messageService.PublishMessageRpc<CreateTodoItemMessage>(
                 message,
-                RabbitMQShared.RoutingKeys.Todo
+                RabbitMQShared.RoutingKeys.Todo,
+                executeIfTimeout: true
             );
             return HandleRpcResponse(result);
         }
@@ -62,7 +63,8 @@ public class TodoItemsController : BaseApiController
         {
             var result = await _messageService.PublishMessageRpc<UpdateTodoItemMessage>(
                 message,
-                RabbitMQShared.RoutingKeys.Todo
+                RabbitMQShared.RoutingKeys.Todo,
+                executeIfTimeout: true
             );
             return HandleRpcResponse(result);
         }
@@ -86,7 +88,8 @@ public class TodoItemsController : BaseApiController
             var message = new DeleteTodoItemMessage(id);
             var result = await _messageService.PublishMessageRpc<DeleteTodoItemMessage>(
                 message,
-                RabbitMQShared.RoutingKeys.Todo
+                RabbitMQShared.RoutingKeys.Todo,
+                executeIfTimeout: true
             );
             return HandleRpcResponse(result);
         }
