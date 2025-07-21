@@ -2,7 +2,7 @@ using System.Threading.Tasks;
 
 namespace TodoApp.WorkerService.Services;
 
-public class InitializationSignal
+public class DbInitializationSignal
 {
     private readonly TaskCompletionSource<bool> _initializationCompleted = new(
         TaskCreationOptions.RunContinuationsAsynchronously

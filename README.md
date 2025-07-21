@@ -161,8 +161,8 @@ The schema definitions are managed by the Worker Service and can be found in [Mo
 
 The worker service ensures database availability before processing messages:
 
-1. [DatabaseInitializationService](src/TodoApp.WorkerService/Services/DatabaseInitializationService.cs) runs migrations and verifies database readiness
-2. [Message handlers](src/TodoApp.WorkerService/Services/BaseMessageHandler.cs) wait for an [InitializationSignal](src/TodoApp.WorkerService/Services/InitializationSignal.cs) before consuming messages
+1. [DbInitializationService](src/TodoApp.WorkerService/Services/DbInitializationService.cs) runs migrations and verifies database readiness
+2. [Message handlers](src/TodoApp.WorkerService/Services/BaseMessageHandler.cs) wait for an [DbInitializationSignal](src/TodoApp.WorkerService/Services/DbInitializationSignal.cs) before consuming messages
 3. Once database is ready, the signal is triggered and handlers start processing
 
 ## Prerequisites

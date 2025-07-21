@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.ObjectPool;
 using RabbitMQ.Client;
 using TodoApp.Shared.Messages;
 using TodoApp.Shared.Models;
@@ -12,12 +13,11 @@ public class TodoItemMessageHandler : BaseMessageHandler
     private const string CurrentQueueName = Configuration.RabbitMQConfig.TodosQueueName;
 
     public TodoItemMessageHandler(
-        IModel channel,
+        ObjectPool<IModel> channelPool,
         IServiceScopeFactory scopeFactory,
         ILogger<TodoItemMessageHandler> logger,
-        InitializationSignal initializationSignal
-    )
-        : base(CurrentQueueName, channel, scopeFactory, logger, initializationSignal) { }
+        DbInitializationSignal dbInitializationSignal)
+        : base(CurrentQueueName, channelPool.Get(), scopeFactory, logger, dbInitializationSignal) { }
 
     protected override async Task<string> ProcessMessage(string messageType, string message)
     {

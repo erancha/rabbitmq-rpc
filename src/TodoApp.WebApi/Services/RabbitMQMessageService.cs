@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.ObjectPool;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -23,14 +24,6 @@ namespace TodoApp.WebApi.Services;
 /// </summary>
 public interface IRabbitMQMessageService
 {
-    /// <summary>
-    /// Publishes a message to a RabbitMQ queue with automatic message type inference.
-    /// </summary>
-    /// <typeparam name="T">Type of the message to publish</typeparam>
-    /// <param name="message">The message to publish</param>
-    /// <param name="routingKey">The queue name to publish to</param>
-    void PublishMessage<T>(T message, string routingKey);
-
     /// <summary>
     /// Publishes a message to a RabbitMQ queue and waits for a response using the RabbitMQ RPC pattern.
     /// </summary>
@@ -60,22 +53,27 @@ public interface IRabbitMQMessageService
 /// </summary>
 public class RabbitMQMessageService : IRabbitMQMessageService
 {
-    private readonly IModel _channel;
+    private readonly ObjectPool<IModel> _channelPool;
+    private readonly IModel _consumerChannel; // Dedicated long-lived channel for RPC consumer
     private readonly ILogger<RabbitMQMessageService> _logger;
     private readonly WebApiConfig _config;
     private readonly string _replyQueueName; // instance-specific reply queue
     private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _pendingRequests; // tracks in-flight RPC requests by correlationId
 
     public RabbitMQMessageService(
-        IModel channel,
+        ObjectPool<IModel> channelPool,
         ILogger<RabbitMQMessageService> logger,
         IOptions<WebApiConfig> config
     )
     {
-        _channel = channel;
+        _channelPool = channelPool;
         _logger = logger;
         _config = config.Value;
         _pendingRequests = new ConcurrentDictionary<string, TaskCompletionSource<string>>();
+
+        // Get a dedicated long-lived channel from the pool for the RPC consumer
+        // We don't return this one to the pool - it stays with the service
+        _consumerChannel = _channelPool.Get();
 
         // Create a durable, named, instance-specific reply queue
         var instanceId = Environment.MachineName; // Or use another unique identifier
@@ -86,10 +84,11 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         // - autoDelete: delete queue when last consumer disconnects (default=false)
         // - exclusive: only allow access from the declaring connection (default: true)
         // - arguments: optional settings like TTL, max length (default=null)
-        _channel.QueueDeclare(queue: _replyQueueName, durable: true);
+        _consumerChannel.QueueDeclare(queue: _replyQueueName, durable: true);
 
-        // Set up consumer for replies
-        var consumer = new EventingBasicConsumer(_channel);
+        // Set up consumer for replies: Create a consumer, add an event handler, and register the consumer.
+        var consumer = new EventingBasicConsumer(_consumerChannel);
+
         consumer.Received += (model, ea) =>
         {
             var correlationId = ea.BasicProperties.CorrelationId;
@@ -103,9 +102,7 @@ public class RabbitMQMessageService : IRabbitMQMessageService
             // If found in _pendingRequests, complete the task with the response value
             // This unblocks the waiting PublishMessageRpc call
             if (_pendingRequests.TryRemove(correlationId, out var tcs))
-            {
                 tcs.SetResult(response);
-            }
             else
             {
                 _logger.LogWarning(
@@ -115,23 +112,7 @@ public class RabbitMQMessageService : IRabbitMQMessageService
             }
         };
 
-        _channel.BasicConsume(consumer: consumer, queue: _replyQueueName, autoAck: true);
-    }
-
-    public void PublishMessage<T>(T message, string routingKey)
-    {
-        var json = JsonSerializer.Serialize(message);
-        var body = Encoding.UTF8.GetBytes(json);
-
-        var properties = _channel.CreateBasicProperties();
-        properties.Type = typeof(T).Name;
-
-        _channel.BasicPublish(
-            exchange: RabbitMQShared.Config.AppExchangeName,
-            routingKey: routingKey,
-            basicProperties: properties,
-            body: body
-        );
+        _consumerChannel.BasicConsume(consumer: consumer, queue: _replyQueueName, autoAck: true);
     }
 
     /// <summary>
@@ -150,31 +131,41 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         // Store the TaskCompletionSource for this request
         _pendingRequests.TryAdd(correlationId, tcs); // Will always succeed as correlationId is a new GUID
 
-        var properties = _channel.CreateBasicProperties();
-        properties.CorrelationId = correlationId;
-        properties.ReplyTo = _replyQueueName;
-        properties.Type = typeof(T).Name;
-
-        properties.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        properties.Headers = new Dictionary<string, object>
+        // Get a channel from the pool for publishing
+        var publishChannel = _channelPool.Get();
+        try
         {
-            { "timeout_seconds", _config.RpcTimeoutSeconds },
-            { "execute_if_timeout", executeIfTimeout }
-        };
+            var properties = publishChannel.CreateBasicProperties();
+            properties.CorrelationId = correlationId;
+            properties.ReplyTo = _replyQueueName;
+            properties.Type = typeof(T).Name;
 
-        var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message));
+            properties.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            properties.Headers = new Dictionary<string, object>
+            {
+                { "timeout_seconds", _config.RpcTimeoutSeconds },
+                { "execute_if_timeout", executeIfTimeout }
+            };
 
-        _logger.LogInformation(
-            "Publishing RPC request with correlation ID {CorrelationId}",
-            correlationId
-        );
+            var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message));
 
-        _channel.BasicPublish(
-            exchange: RabbitMQShared.Config.AppExchangeName,
-            routingKey: routingKey,
-            basicProperties: properties,
-            body: body
-        );
+            _logger.LogInformation(
+                "Publishing RPC request with correlation ID {CorrelationId}",
+                correlationId
+            );
+
+            publishChannel.BasicPublish(
+                exchange: RabbitMQShared.Config.AppExchangeName,
+                routingKey: routingKey,
+                basicProperties: properties,
+                body: body
+            );
+        }
+        finally
+        {
+            // Always return the channel to the pool
+            _channelPool.Return(publishChannel);
+        }
 
         // Create timeout task that completes after specified seconds
         var timeoutTask = Task.Delay(TimeSpan.FromSeconds(_config.RpcTimeoutSeconds));

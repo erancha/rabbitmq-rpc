@@ -26,17 +26,17 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
         IModel channel,
         IServiceScopeFactory scopeFactory,
         ILogger logger,
-        InitializationSignal initializationSignal
+        DbInitializationSignal dbInitializationSignal
     )
     {
         _queueName = queueName;
         _channel = channel;
         _scopeFactory = scopeFactory;
         _logger = logger;
-        _initializationSignal = initializationSignal;
+        _dbInitializationSignal = dbInitializationSignal;
     }
 
-    private readonly InitializationSignal _initializationSignal;
+    private readonly DbInitializationSignal _dbInitializationSignal;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -44,7 +44,7 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
             "Waiting for database initialization before starting {_queueName}",
             _queueName
         );
-        await _initializationSignal.Initialization;
+        await _dbInitializationSignal.Initialization;
         _logger.LogInformation("Starting to consume messages from {_queueName}", _queueName);
         _channel.BasicQos(prefetchSize: 0, prefetchCount: 1, global: false);
         var consumer = new EventingBasicConsumer(_channel);

@@ -159,8 +159,9 @@ fi
 echo -e "\n${CYAN}Running simple test...${NC}"
 
 # Wait for services to be fully ready
-echo "Allowing 5 seconds for services to be ready..."
-sleep 5
+WAIT_SECONDS=10
+echo "Allowing $WAIT_SECONDS seconds for services to be ready..."
+sleep $WAIT_SECONDS
 
 # Create a user
 echo "Creating test user..."
