@@ -199,8 +199,7 @@ public class RabbitMQMessageService : IRabbitMQMessageService
                     Error = new RpcError
                     {
                         Kind = "TEMPORARY_UNAVAILABLE",
-                        Message =
-                            $"Service is temporarily unavailable (timeout: {_config.RpcTimeoutSeconds}s). Your request is queued and will be processed when the system recovers",
+                        Message = $"Service is temporarily unavailable (timeout: {_config.RpcTimeoutSeconds}s)." + (executeIfTimeout ? " Your request is queued and will be processed when the system recovers" : string.Empty),
                     },
                 }
             );

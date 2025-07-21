@@ -14,9 +14,9 @@
       <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Create Users Thread Group">
         <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller">
           <boolProp name="LoopController.continue_forever">false</boolProp>
-          <stringProp name="LoopController.loops">100</stringProp>
+          <stringProp name="LoopController.loops">2</stringProp>
         </elementProp>
-        <stringProp name="ThreadGroup.num_threads">100</stringProp>
+        <stringProp name="ThreadGroup.num_threads">5000</stringProp>
         <stringProp name="ThreadGroup.ramp_time">1</stringProp>
         <boolProp name="ThreadGroup.scheduler">false</boolProp>
         <stringProp name="ThreadGroup.duration"></stringProp>
@@ -38,9 +38,9 @@
             <collectionProp name="Arguments.arguments">
               <elementProp name="" elementType="HTTPArgument">
                 <boolProp name="HTTPArgument.always_encode">false</boolProp>
-                <stringProp name="Argument.value">{
-  "username": "testuser_${__threadNum}_${__counter(FALSE,)}",
-  "email": "testuser_${__threadNum}_${__counter(FALSE,)}@gmail.com"
+                            <stringProp name="Argument.value">{
+  "username": "testuser_${__threadNum}_${__counter(FALSE,)}_${__UUID}",
+  "email": "testuser_${__threadNum}_${__counter(FALSE,)}_${__UUID}@gmail.com"
 }</stringProp>
                 <stringProp name="Argument.metadata">=</stringProp>
               </elementProp>

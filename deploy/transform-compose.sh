@@ -28,6 +28,10 @@ sed -i -E '
     image: '"$DOCKER_HUB_USERNAME"'/todo-app:worker-latest
 ' "./docker-compose.yml.tmp"
 
+# Remove ASPNETCORE_ENVIRONMENT and DOTNET_ENVIRONMENT lines from the temp file
+sed -i '/ASPNETCORE_ENVIRONMENT/d' ./docker-compose.yml.tmp
+sed -i '/DOTNET_ENVIRONMENT/d' ./docker-compose.yml.tmp
+
 # Move the temporary file to final location
 mv "./docker-compose.yml.tmp" "./docker-compose.yml"
 
