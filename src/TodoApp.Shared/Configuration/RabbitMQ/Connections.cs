@@ -1,15 +1,10 @@
 using RabbitMQ.Client;
-using TodoApp.Shared.Configuration.RabbitMQ;
 
-namespace TodoApp.Shared.Helpers;
+namespace TodoApp.Shared.Configuration.RabbitMQ;
 
-public static class RabbitMQConnections
+public static class Connections
 {
-    public static (IConnection Connection, IModel Channel) CreateConnection(
-        Config config,
-        int maxRetries = 5
-    )
-    {
+    public static IConnection ConnectAndBindExchange(Config config,int maxRetries = 5) {
         var connectionFactory = new ConnectionFactory
         {
             HostName = config.Host,
@@ -50,6 +45,6 @@ public static class RabbitMQConnections
             durable: true
         );
 
-        return (connection, channel);
+        return connection;
     }
 }

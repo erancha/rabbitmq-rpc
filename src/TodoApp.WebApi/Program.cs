@@ -1,5 +1,6 @@
+using Microsoft.Extensions.ObjectPool;
 using RabbitMQ.Client;
-using TodoApp.Shared.Helpers;
+using TodoApp.Shared.Services;
 using TodoApp.WebApi.Configuration;
 using TodoApp.WebApi.Services;
 using RabbitMQShared = TodoApp.Shared.Configuration.RabbitMQ;
@@ -16,12 +17,12 @@ builder.Services.Configure<RabbitMQShared.Config>(builder.Configuration.GetSecti
 var rabbitMQConfig =
     builder.Configuration.GetSection("RabbitMQ").Get<RabbitMQShared.Config>()
     ?? new RabbitMQShared.Config();
-
-(IConnection connection, IModel channel) =
-    TodoApp.Shared.Helpers.RabbitMQConnections.CreateConnection(rabbitMQConfig);
-
-builder.Services.AddSingleton<IModel>(channel);
+IConnection connection = RabbitMQShared.Connections.ConnectAndBindExchange(rabbitMQConfig);
+builder.Services.AddSingleton<ObjectPool<IModel>>(_ => RabbitMQChannelPoolFactory.CreateChannelPool(connection));
 builder.Services.AddSingleton<IRabbitMQMessageService, RabbitMQMessageService>();
+
+// Bind WebApiConfig to the WebApi section in appsettings.json
+builder.Services.Configure<WebApiConfig>(builder.Configuration.GetSection("WebApi"));
 
 // Build the application - this finalizes service registration and creates the root service provider.
 // After this point, we can no longer register services, and the application can start resolving them.
@@ -43,11 +44,7 @@ host.MapControllers();
 
 // Register cleanup on application shutdown
 host.Services.GetRequiredService<IHostApplicationLifetime>()
-    .ApplicationStopping.Register(() =>
-    {
-        channel?.Close();
-        connection?.Close();
-    });
+    .ApplicationStopping.Register(() => connection?.Close());
 
 // DI Resolution happens in the following points:
 //   1. When ASP.NET Core resolves services during startup,

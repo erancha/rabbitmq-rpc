@@ -13,7 +13,7 @@ namespace TodoApp.WebApi.Controllers;
 [Route("api/v1/[controller]")]
 public class TodoItemsController : BaseApiController
 {
-    private readonly IRabbitMQMessageService _messageService;
+    private readonly IRabbitMQMessageService _rabbitMQMessageService;
     private readonly ILogger<TodoItemsController> _logger;
 
     public TodoItemsController(
@@ -22,7 +22,7 @@ public class TodoItemsController : BaseApiController
     )
         : base(logger)
     {
-        _messageService = messageService;
+        _rabbitMQMessageService = messageService;
         _logger = logger;
     }
 
@@ -36,7 +36,7 @@ public class TodoItemsController : BaseApiController
 
         try
         {
-            var result = await _messageService.PublishMessageRpc<CreateTodoItemMessage>(
+            var result = await _rabbitMQMessageService.PublishMessageRpc<CreateTodoItemMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.Todo,
                 executeIfTimeout: true
@@ -61,7 +61,7 @@ public class TodoItemsController : BaseApiController
         var message = new UpdateTodoItemMessage { Id = id, Data = data };
         try
         {
-            var result = await _messageService.PublishMessageRpc<UpdateTodoItemMessage>(
+            var result = await _rabbitMQMessageService.PublishMessageRpc<UpdateTodoItemMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.Todo,
                 executeIfTimeout: true
@@ -86,7 +86,7 @@ public class TodoItemsController : BaseApiController
         try
         {
             var message = new DeleteTodoItemMessage(id);
-            var result = await _messageService.PublishMessageRpc<DeleteTodoItemMessage>(
+            var result = await _rabbitMQMessageService.PublishMessageRpc<DeleteTodoItemMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.Todo,
                 executeIfTimeout: true
@@ -111,7 +111,7 @@ public class TodoItemsController : BaseApiController
         try
         {
             var message = new GetTodosByUserIdMessage(userId);
-            var result = await _messageService.PublishMessageRpc<GetTodosByUserIdMessage>(
+            var result = await _rabbitMQMessageService.PublishMessageRpc<GetTodosByUserIdMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.Todo
             );

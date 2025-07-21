@@ -7,27 +7,26 @@ namespace TodoApp.WorkerService.Services;
 /// A hosted service responsible for initializing the database.
 /// Ensures database is ready by running any pending migrations before the application starts.
 /// </summary>
-public class DatabaseInitializationService : IHostedService
+public class DbInitializationService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<DatabaseInitializationService> _logger;
-    private readonly InitializationSignal _signal;
+    private readonly ILogger<DbInitializationService> _logger;
+    private readonly DbInitializationSignal _dbInitializationSignal;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="DatabaseInitializationService"/> class.
+    /// Initializes a new instance of the <see cref="DbInitializationService"/> class.
     /// </summary>
     /// <param name="serviceProvider">The service provider for dependency resolution.</param>
     /// <param name="logger">Logger for diagnostic information.</param>
-    /// <param name="signal">Initialization signal.</param>
-    public DatabaseInitializationService(
+    /// <param name="dbInitializationSignal">Initialization signal when the service completes.</param>
+    public DbInitializationService(
         IServiceProvider serviceProvider,
-        ILogger<DatabaseInitializationService> logger,
-        InitializationSignal signal
-    )
+        ILogger<DbInitializationService> logger,
+        DbInitializationSignal dbInitializationSignal)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
-        _signal = signal;
+        _dbInitializationSignal = dbInitializationSignal;
     }
 
     /// <summary>
@@ -101,7 +100,7 @@ public class DatabaseInitializationService : IHostedService
             // await Task.Delay(TimeSpan.FromMinutes(1), cancellationToken);
 
             _logger.LogInformation("Database initialization completed");
-            _signal.MarkAsComplete();
+            _dbInitializationSignal.MarkAsComplete();
         }
         catch (Exception ex)
         {

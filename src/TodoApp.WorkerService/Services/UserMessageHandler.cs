@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.ObjectPool;
 using RabbitMQ.Client;
 using TodoApp.Shared.Messages;
 using TodoApp.Shared.Models;
@@ -10,22 +11,24 @@ namespace TodoApp.WorkerService.Services;
 public class UserMessageHandler : BaseMessageHandler
 {
     private const string CurrentQueueName = Configuration.RabbitMQConfig.UsersQueueName;
+    private readonly string _instanceId;
 
     public UserMessageHandler(
-        IModel channel,
+        ObjectPool<IModel> channelPool,
         IServiceScopeFactory scopeFactory,
         ILogger<UserMessageHandler> logger,
-        InitializationSignal initializationSignal
-    )
-        : base(CurrentQueueName, channel, scopeFactory, logger, initializationSignal) { }
+        DbInitializationSignal dbInitializationSignal)
+        : base(CurrentQueueName, channelPool.Get(), scopeFactory, logger, dbInitializationSignal) 
+    {
+        _instanceId = Guid.NewGuid().ToString("N")[..8]; // Short unique ID
+    }
 
     protected override async Task<string> ProcessMessage(string messageType, string message)
     {
-        _logger.LogInformation("Processing message of type {MessageType}", messageType);
+        _logger.LogInformation("[Instance {InstanceId}] Processing message of type {MessageType}", _instanceId, messageType);
 
-        // Create a new scope to get a fresh DbContext instance for each message
-        using var scope = _scopeFactory.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<TodoDbContext>();
+        // Get a fresh DbContext instance for each message
+        var dbContext = _scopeFactory.CreateScope().ServiceProvider.GetRequiredService<TodoDbContext>();
 
         switch (messageType)
         {
@@ -129,12 +132,12 @@ public class UserMessageHandler : BaseMessageHandler
 
         dbContext.Users.Remove(user);
         await dbContext.SaveChangesAsync();
-        _logger.LogInformation("Deleted user with ID {UserId}", user.Id);
+        _logger.LogInformation("[Instance {InstanceId}] Deleted user with ID {UserId}", _instanceId, user.Id);
     }
 
     private async Task<List<User>> GetAllUsers(TodoDbContext dbContext)
     {
-        return await dbContext.Users.ToListAsync();
+        return await dbContext.Users.OrderBy(u => u.Id).Take(100).ToListAsync();
     }
 
     private async Task<User?> GetUserById(TodoDbContext dbContext, GetUserByIdMessage message)
@@ -144,3 +147,235 @@ public class UserMessageHandler : BaseMessageHandler
 
     public override void Dispose() { }
 }
+
+#pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
+#region UserMessageHandler Wrapper Classes (2-20)
+public class UserMessageHandler2 : UserMessageHandler
+{
+    public UserMessageHandler2(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler3 : UserMessageHandler
+{
+    public UserMessageHandler3(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler4 : UserMessageHandler
+{
+    public UserMessageHandler4(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler5 : UserMessageHandler
+{
+    public UserMessageHandler5(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler6 : UserMessageHandler
+{
+    public UserMessageHandler6(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler7 : UserMessageHandler
+{
+    public UserMessageHandler7(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler8 : UserMessageHandler
+{
+    public UserMessageHandler8(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler9 : UserMessageHandler
+{
+    public UserMessageHandler9(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler10 : UserMessageHandler
+{
+    public UserMessageHandler10(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler11 : UserMessageHandler
+{
+    public UserMessageHandler11(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler12 : UserMessageHandler
+{
+    public UserMessageHandler12(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler13 : UserMessageHandler
+{
+    public UserMessageHandler13(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler14 : UserMessageHandler
+{
+    public UserMessageHandler14(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler15 : UserMessageHandler
+{
+    public UserMessageHandler15(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler16 : UserMessageHandler
+{
+    public UserMessageHandler16(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler17 : UserMessageHandler
+{
+    public UserMessageHandler17(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler18 : UserMessageHandler
+{
+    public UserMessageHandler18(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler19 : UserMessageHandler
+{
+    public UserMessageHandler19(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+
+public class UserMessageHandler20 : UserMessageHandler
+{
+    public UserMessageHandler20(
+        ObjectPool<IModel> channelPool,
+        IServiceScopeFactory scopeFactory,
+        ILogger<UserMessageHandler> logger,
+        DbInitializationSignal dbInitializationSignal)
+        : base(channelPool, scopeFactory, logger, dbInitializationSignal)
+    {
+    }
+}
+#endregion
+#pragma warning restore CS1591

@@ -13,13 +13,13 @@ namespace TodoApp.WebApi.Controllers;
 [Route("api/v1/[controller]")]
 public class UsersController : BaseApiController
 {
-    private readonly IRabbitMQMessageService _messageService;
+    private readonly IRabbitMQMessageService _rabbitMQMessageService;
     private readonly ILogger<UsersController> _logger;
 
     public UsersController(IRabbitMQMessageService messageService, ILogger<UsersController> logger)
         : base(logger)
     {
-        _messageService = messageService;
+        _rabbitMQMessageService = messageService;
         _logger = logger;
     }
 
@@ -33,7 +33,7 @@ public class UsersController : BaseApiController
 
         try
         {
-            var responseJson = await _messageService.PublishMessageRpc<CreateUserMessage>(
+            var responseJson = await _rabbitMQMessageService.PublishMessageRpc<CreateUserMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.User,
                 executeIfTimeout: true
@@ -58,7 +58,7 @@ public class UsersController : BaseApiController
         var message = new UpdateUserMessage { Id = id, Data = data };
         try
         {
-            var responseJson = await _messageService.PublishMessageRpc<UpdateUserMessage>(
+            var responseJson = await _rabbitMQMessageService.PublishMessageRpc<UpdateUserMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.User,
                 executeIfTimeout: true
@@ -83,7 +83,7 @@ public class UsersController : BaseApiController
         try
         {
             var message = new DeleteUserMessage(id);
-            var responseJson = await _messageService.PublishMessageRpc<DeleteUserMessage>(
+            var responseJson = await _rabbitMQMessageService.PublishMessageRpc<DeleteUserMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.User,
                 executeIfTimeout: true
@@ -103,7 +103,7 @@ public class UsersController : BaseApiController
         try
         {
             var message = new GetAllUsersMessage();
-            var responseJson = await _messageService.PublishMessageRpc<GetAllUsersMessage>(
+            var responseJson = await _rabbitMQMessageService.PublishMessageRpc<GetAllUsersMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.User
             );
@@ -127,7 +127,7 @@ public class UsersController : BaseApiController
         try
         {
             var message = new GetUserByIdMessage(id);
-            var responseJson = await _messageService.PublishMessageRpc<GetUserByIdMessage>(
+            var responseJson = await _rabbitMQMessageService.PublishMessageRpc<GetUserByIdMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.User
             );
