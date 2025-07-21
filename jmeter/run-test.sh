@@ -23,13 +23,13 @@ if [ $? -eq 0 ]; then
     echo "Results available in: ./results.jtl"
 
     # Check container logs for errors and warnings
-    echo "Checking container logs for issues..."
-    cd ..
-    echo "WebAPI Errors/Warnings:"
-    docker compose -p todo-app logs webapi 2>&1 | grep -i -E "error|warn|fail|exception" || echo "No issues found"
+    # echo "Checking container logs for issues..."
+    # cd ..
+    # echo "WebAPI Errors/Warnings:"
+    # docker compose -p todo-app logs webapi 2>&1 | grep -i -E "error|warn|fail|exception" || echo "No issues found"
     
-    echo "Worker Errors/Warnings:"
-    docker compose -p todo-app logs worker 2>&1 | grep -i -E "error|warn|fail|exception" || echo "No issues found"
+    # echo "Worker Errors/Warnings:"
+    # docker compose -p todo-app logs worker 2>&1 | grep -i -E "error|warn|fail|exception" || echo "No issues found"
     
     # echo "Postgres Errors/Warnings:"
     # docker compose -p todo-app logs postgres 2>&1 | grep -i -E "error|warn|fail|exception" || echo "No issues found"

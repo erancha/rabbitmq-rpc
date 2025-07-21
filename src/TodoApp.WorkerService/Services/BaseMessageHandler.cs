@@ -56,15 +56,15 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
             {
                 return;
             }
+
+            string? message = null;
             try
             {
                 var messageType = ea.BasicProperties?.Type;
                 if (string.IsNullOrEmpty(messageType))
                 {
                     _logger.LogWarning("Message type is missing");
-                    var errorResponse = CreateErrorResponse(
-                        new InvalidOperationException("Message type is missing")
-                    );
+                    var errorResponse = CreateErrorResponse(new InvalidOperationException("Message type is missing"), message ?? string.Empty);
                     SendRpcResponse(ea, errorResponse);
                     return;
                 }
@@ -86,17 +86,18 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
                     }
                 }
 
-                var message = Encoding.UTF8.GetString(ea.Body.ToArray());
+                message = Encoding.UTF8.GetString(ea.Body.ToArray());
                 var rpcResponse = await ProcessMessage(messageType, message);
                 _channel.BasicAck(ea.DeliveryTag, multiple: false);
 
-                if (!HasRequestTimedOut(ea, messageType, out _, out _)) 
+                if (!HasRequestTimedOut(ea, messageType, out _, out _))
                     SendRpcResponse(ea, rpcResponse);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing message");
-                var rpcResponse = CreateErrorResponse(ex);
+                _logger.LogError(ex, "Error processing message: {Message}", message);
+                string unescapedMessage = !string.IsNullOrWhiteSpace(message) ? UnescapeJsonMessage(message) : string.Empty;
+                var rpcResponse = CreateErrorResponse(ex, unescapedMessage);
                 SendRpcResponse(ea, rpcResponse);
                 _channel.BasicNack(ea.DeliveryTag, false, false);
             }
@@ -205,7 +206,7 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
             Error = new RpcError { Message = message, Kind = kind },
         };
         var json = JsonSerializer.Serialize(response);
-        _logger.LogInformation(
+        _logger.LogError(
             "CreateErrorResponse<{Type}>({Message}, {Kind}) -> {Response}",
             typeof(T).Name,
             message,
@@ -216,6 +217,11 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
     }
 
     protected string CreateErrorResponse(Exception ex)
+    {
+        return CreateErrorResponse(ex, string.Empty);
+    }
+
+    protected string CreateErrorResponse(Exception ex, string requestMessage)
     {
         var kind = ex switch
         {
@@ -235,21 +241,55 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
             _ => ex.Message,
         };
 
-        var response = new RpcResponse
+        object? requestData;
+        try
+        {
+            requestData = !string.IsNullOrWhiteSpace(requestMessage)
+                ? JsonSerializer.Deserialize<object>(requestMessage)
+                : null;
+        }
+        catch
+        {
+            requestData = requestMessage;
+        }
+
+        // Suffix the error message with the serialized errorMessageObj (request context)
+        var errorMessageObj = new { Error = message, Request = requestData };
+        var response = new RpcResponse<object>
         {
             Success = false,
             Error = new RpcError { Message = message, Kind = kind },
         };
         var json = JsonSerializer.Serialize(response);
-        _logger.LogInformation(
-            "CreateErrorResponse({ExType}, {Message}, {Kind}) -> {Response}",
+        _logger.LogError(
+            "CreateErrorResponse({ExType}, {Message}, {Kind}, {RequestMessage}) -> {Response}",
             ex.GetType().Name,
             message,
             kind,
+            requestMessage,
             json
         );
         return json;
     }
 
     #endregion
+
+    /// <summary>
+    /// Attempts to normalize a JSON string by parsing and re-serializing it without indentation.
+    /// Returns the original string if parsing fails.
+    /// </summary>
+    /// <param name="message">The JSON string to normalize.</param>
+    /// <returns>The normalized JSON string, or the original if invalid.</returns>
+    private string UnescapeJsonMessage(string message)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(message);
+            return JsonSerializer.Serialize(doc.RootElement, new JsonSerializerOptions { WriteIndented = false });
+        }
+        catch
+        {
+            return message;
+        }
+    }
 }

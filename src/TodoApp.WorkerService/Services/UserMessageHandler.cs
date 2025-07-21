@@ -21,109 +21,70 @@ public class UserMessageHandler : BaseMessageHandler
 
     protected override async Task<string> ProcessMessage(string messageType, string message)
     {
-        try
+        _logger.LogInformation("Processing message of type {MessageType}", messageType);
+
+        // Create a new scope to get a fresh DbContext instance for each message
+        using var scope = _scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<TodoDbContext>();
+
+        switch (messageType)
         {
-            _logger.LogInformation("Processing message of type {MessageType}", messageType);
+            case nameof(CreateUserMessage):
+                var createMessage = JsonSerializer.Deserialize<CreateUserMessage>(message);
+                if (createMessage != null)
+                {
+                    var id = await CreateUser(dbContext, createMessage);
+                    return CreateSuccessResponse(id);
+                }
+                else
+                    throw new InvalidOperationException(
+                        $"Deserialization failed for CreateUserMessage. Message: {message}"
+                    );
 
-            // Create a new scope to get a fresh DbContext instance for each message
-            using var scope = _scopeFactory.CreateScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<TodoDbContext>();
+            case nameof(UpdateUserMessage):
+                var updateMessage = JsonSerializer.Deserialize<UpdateUserMessage>(message);
+                if (updateMessage != null)
+                    await UpdateUser(dbContext, updateMessage);
+                else
+                    throw new InvalidOperationException(
+                        $"Deserialization failed for UpdateUserMessage. Message: {message}"
+                    );
+                break;
 
-            switch (messageType)
-            {
-                case nameof(CreateUserMessage):
-                    var createMessage = JsonSerializer.Deserialize<CreateUserMessage>(message);
-                    if (createMessage != null)
-                    {
-                        var id = await CreateUser(dbContext, createMessage);
-                        return CreateSuccessResponse(id);
-                    }
-                    else
-                        throw new InvalidOperationException(
-                            $"Deserialization failed for CreateUserMessage. Message: {message}"
-                        );
+            case nameof(DeleteUserMessage):
+                var deleteMessage = JsonSerializer.Deserialize<DeleteUserMessage>(message);
+                if (deleteMessage != null)
+                    await DeleteUser(dbContext, deleteMessage);
+                else
+                    throw new InvalidOperationException(
+                        $"Deserialization failed for DeleteUserMessage. Message: {message}"
+                    );
+                break;
 
-                case nameof(UpdateUserMessage):
-                    var updateMessage = JsonSerializer.Deserialize<UpdateUserMessage>(message);
-                    if (updateMessage != null)
-                        await UpdateUser(dbContext, updateMessage);
-                    else
-                        throw new InvalidOperationException(
-                            $"Deserialization failed for UpdateUserMessage. Message: {message}"
-                        );
-                    break;
+            case nameof(GetAllUsersMessage):
+                var users = await GetAllUsers(dbContext);
+                var response = new GetAllUsersResponse { Users = users };
+                return CreateSuccessResponse(response);
 
-                case nameof(DeleteUserMessage):
-                    var deleteMessage = JsonSerializer.Deserialize<DeleteUserMessage>(message);
-                    if (deleteMessage != null)
-                        await DeleteUser(dbContext, deleteMessage);
-                    else
-                        throw new InvalidOperationException(
-                            $"Deserialization failed for DeleteUserMessage. Message: {message}"
-                        );
-                    break;
+            case nameof(GetUserByIdMessage):
+                var getUserMessage = JsonSerializer.Deserialize<GetUserByIdMessage>(message);
+                if (getUserMessage != null)
+                {
+                    var user = await GetUserById(dbContext, getUserMessage) ?? throw new KeyNotFoundException($"User with ID {getUserMessage.Id} not found");
+                    var userResponse = new GetUserByIdResponse { User = user };
+                    return CreateSuccessResponse(userResponse);
+                }
+                else
+                    throw new InvalidOperationException(
+                        $"Deserialization failed for GetUserByIdMessage. Message: {message}"
+                    );
 
-                case nameof(GetAllUsersMessage):
-                    try
-                    {
-                        var users = await dbContext.Users.ToListAsync();
-                        var response = new GetAllUsersResponse { Users = users };
-                        return CreateSuccessResponse(response);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error getting all users");
-                        return CreateErrorResponse<GetAllUsersResponse>(
-                            "Database error",
-                            "INTERNAL_ERROR"
-                        );
-                    }
-
-                case nameof(GetUserByIdMessage):
-                    var getUserMessage = JsonSerializer.Deserialize<GetUserByIdMessage>(message);
-                    if (getUserMessage != null)
-                    {
-                        try
-                        {
-                            var user = await GetUserById(dbContext, getUserMessage);
-                            if (user == null)
-                                return CreateErrorResponse<GetUserByIdResponse>(
-                                    "User not found",
-                                    RpcErrorKind.NOT_FOUND.ToString()
-                                );
-                            var userResponse = new GetUserByIdResponse { User = user };
-                            return CreateSuccessResponse(userResponse);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(
-                                ex,
-                                "Error getting user by id {Id}",
-                                getUserMessage.Id
-                            );
-                            return CreateErrorResponse<GetUserByIdResponse>(
-                                "Database error",
-                                "INTERNAL_ERROR"
-                            );
-                        }
-                    }
-                    else
-                        throw new InvalidOperationException(
-                            $"Deserialization failed for GetUserByIdMessage. Message: {message}"
-                        );
-
-                default:
-                    _logger.LogWarning("Unknown message type: {MessageType}", messageType);
-                    throw new InvalidOperationException($"Unknown message type: {messageType}");
-            }
-
-            return CreateSuccessResponse();
+            default:
+                _logger.LogWarning("Unknown message type: {MessageType}", messageType);
+                throw new InvalidOperationException($"Unknown message type: {messageType}");
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error processing user message");
-            return CreateErrorResponse(ex);
-        }
+
+        return CreateSuccessResponse();
     }
 
     private async Task<int> CreateUser(TodoDbContext dbContext, CreateUserMessage message)
