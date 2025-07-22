@@ -48,6 +48,6 @@
   <polyline stroke-width="2" marker-end="url(#arrowhead)" style="stroke-width: 2; stroke: rgb(212, 0, 94);" points="745.811 243.988 788.024 238.556 900.187 224.118"/>
   <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px; transform-box: fill-box; transform-origin: 103.429% 55.6713%;" transform="matrix(0.950853, -0.140418, 0.263454, 0.996299, 418.783447, -79.131142)">`user`</text>
   <text x="238.532" y="330.388" font-family="Arial" font-size="12" fill="#198754" style="white-space: pre; font-size: 12px;" transform="matrix(0.955154, -0.159659, 0, 1.030544, 431.698242, -14.985349)">`todo`</text>
-  <text style="fill: rgb(51, 51, 51); font-family: Arial, sans-serif; font-size: 14px; font-weight: 700; white-space: pre;" x="902.669" y="229.395">users-handler</text>
-  <text style="fill: rgb(51, 51, 51); font-family: Arial, sans-serif; font-size: 14px; font-weight: 700; white-space: pre; stroke-width: 1;" x="903.326" y="245.023">todos-handler</text>
+  <text style="fill: rgb(51, 51, 51); font-family: Arial, sans-serif; font-size: 14px; font-weight: 700; white-space: pre;" x="902.669" y="229.395">users-handler(s)</text>
+  <text style="fill: rgb(51, 51, 51); font-family: Arial, sans-serif; font-size: 14px; font-weight: 700; white-space: pre; stroke-width: 1;" x="903.326" y="245.023">todos-handler(s)</text>
 </svg>
