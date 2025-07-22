@@ -12,6 +12,7 @@
   - [RabbitMQ Communication Pattern](#rabbitmq-communication-pattern)
   - [PostgreSQL Schema Design](#postgresql-schema-design)
   - [PostgreSQL startup](#postgresql-startup)
+  - [Scalability notes](#scalability-notes)
 - [Prerequisites](#prerequisites)
 - [Running the Application](#running-the-application)
 - [Project Structure](#project-structure)
@@ -164,6 +165,12 @@ The worker service ensures database availability before processing messages:
 1. [DbInitializationService](src/TodoApp.WorkerService/Services/DbInitializationService.cs) runs migrations and verifies database readiness
 2. [Message handlers](src/TodoApp.WorkerService/Services/BaseMessageHandler.cs) wait for an [DbInitializationSignal](src/TodoApp.WorkerService/Services/DbInitializationSignal.cs) before consuming messages
 3. Once database is ready, the signal is triggered and handlers start processing
+
+### Scalability notes
+
+By scaling the number of message handlers in the worker service from 1 to 15 instances, throughput was increased from ~200 to ~1,000 requests per second (5x improvement). This is achieved by registering multiple instances of the same `IHostedService` class in [Program.cs](src/TodoApp.WorkerService/Program.cs), which creates separate background tasks that process messages in parallel.
+
+The scalability can be tested using the JMeter test plan: [create-users-test-plan.jmx](jmeter/create-users-test-plan.jmx)
 
 ## Prerequisites
 
