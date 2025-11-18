@@ -4,14 +4,15 @@
 
 <!-- toc -->
 
-- [Task Overview:](#task-overview)
+- [Overview:](#overview)
   - [Requirements:](#requirements)
-  - [Technologies:](#technologies)
   - [Deliverables:](#deliverables)
 - [Architecture](#architecture)
+  - [Technologies:](#technologies)
   - [RabbitMQ Communication Pattern](#rabbitmq-communication-pattern)
   - [PostgreSQL Schema Design](#postgresql-schema-design)
   - [PostgreSQL startup](#postgresql-startup)
+  - [Threading Model](#threading-model)
   - [Scalability notes](#scalability-notes)
 - [Prerequisites](#prerequisites)
 - [Running the Application](#running-the-application)
@@ -20,7 +21,7 @@
 
 <!-- tocstop -->
 
-## Task Overview:
+## Overview:
 
 Implement a backend-only To-Do application. Swagger will serve as the client interface for this task.
 
@@ -42,13 +43,6 @@ Implement a backend-only To-Do application. Swagger will serve as the client int
 
 7. Communication between the services should be handled via RabbitMQ.
 
-### Technologies:
-
-- Database: PostgreSQL (use any managed solution you&#39;re comfortable with)
-- Message Broker: RabbitMQ (also managed or local, as preferred)
-
-Focus on designing a clean and minimal database schema and defining a robust communication pattern with RabbitMQ (e.g.queue types, policies, error handling, etc.).
-
 ### Deliverables:
 
 - A Docker Compose file that brings up:
@@ -60,6 +54,14 @@ Focus on designing a clean and minimal database schema and defining a robust com
 - Code should follow best practices and clean architecture principles as much as possible.
 
 ## Architecture
+
+The application uses a clean, minimal database schema with PostgreSQL and implements a robust RabbitMQ RPC communication pattern with direct exchange routing, message persistence, and comprehensive error handling.
+
+### Technologies:
+
+- .NET: .NET 8.0 (`net8.0`) for all projects in the solution
+- Database: PostgreSQL (use any managed solution you're comfortable with)
+- Message Broker: RabbitMQ (also managed or local, as preferred)
 
 See the diagram for how the WebAPI uses [RabbitMQ RPC Pattern](#rabbitmq-communication-pattern) to delegate requests it receives to the Worker Service and wait for responses.
 
@@ -165,6 +167,32 @@ The worker service ensures database availability before processing messages:
 1. [DbInitializationService](src/TodoApp.WorkerService/Services/DbInitializationService.cs) runs migrations and verifies database readiness
 2. [Message handlers](src/TodoApp.WorkerService/Services/BaseMessageHandler.cs) wait for an [DbInitializationSignal](src/TodoApp.WorkerService/Services/DbInitializationSignal.cs) before consuming messages
 3. Once database is ready, the signal is triggered and handlers start processing
+
+### Threading Model
+
+The application uses a multi-threaded architecture with async/await patterns and thread-safety considerations:
+
+**WebAPI Service:**
+
+- **ASP.NET Core Request Threads**: Each HTTP request is implicitly handled on a thread pool thread
+- **RPC Reply Consumer**: Single dedicated background thread ([RabbitMQMessageService.cs](src/TodoApp.WebApi/Services/RabbitMQMessageService.cs)) listening on the reply queue
+- **Thread-Safe Response Routing**: `ConcurrentDictionary<string, TaskCompletionSource<string>>` maps correlation IDs to pending requests, allowing the single consumer thread to dispatch responses to the correct waiting request thread
+- **Channel Pooling**: `ObjectPool<IModel>` provides thread-safe channel reuse for publishing messages
+
+**Worker Service:**
+
+- **Multiple Handler Instances**: 15 `UserMessageHandler` instances and 1 `TodoItemMessageHandler` instance registered as `IHostedService` ([Program.cs](src/TodoApp.WorkerService/Program.cs))
+- **Parallel Message Processing**: Each handler runs on its own background thread, consuming messages from RabbitMQ queues independently
+- **Per-Message DbContext**: Each message handler creates a new scoped `DbContext` instance per message ([UserMessageHandler.cs](src/TodoApp.WorkerService/Services/UserMessageHandler.cs), [TodoItemMessageHandler.cs](src/TodoApp.WorkerService/Services/TodoItemMessageHandler.cs)) to avoid thread-safety issues with EF Core
+- **Initialization Synchronization**: `TaskCompletionSource` with `RunContinuationsAsynchronously` ([DbInitializationSignal.cs](src/TodoApp.WorkerService/Services/DbInitializationSignal.cs)) ensures all message handlers wait for database initialization before processing messages
+
+**Key Thread-Safety Patterns:**
+
+- Async/await throughout for non-blocking I/O operations
+- No shared mutable state between message handlers
+- Thread-safe collections (`ConcurrentDictionary`) for cross-thread communication
+- Object pooling for RabbitMQ channels to prevent concurrent access issues
+- Scoped dependency injection for per-request/per-message isolation
 
 ### Scalability notes
 

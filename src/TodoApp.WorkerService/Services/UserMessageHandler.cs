@@ -149,7 +149,8 @@ public class UserMessageHandler : BaseMessageHandler
 }
 
 #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
-#region UserMessageHandler Wrapper Classes (2-20)
+#region UserMessageHandler Wrapper Classes (2-20) 
+//TODO: These wrappers are a temp workaround to force additional instances - research further!
 public class UserMessageHandler2 : UserMessageHandler
 {
     public UserMessageHandler2(

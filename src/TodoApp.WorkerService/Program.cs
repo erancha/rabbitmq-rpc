@@ -38,7 +38,8 @@ builder.Services.AddHostedService<DbInitializationService>();
 // Multiple instances for increased throughput - using wrapper classes since AddHostedService<T> creates singletons
 builder.Services.AddHostedService<UserMessageHandler>();
 #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
-#region UserMessageHandler Registrations (20 instances)
+#region UserMessageHandler Registrations (15 instances)
+//TODO: These wrappers are a temp workaround to force additional instances - research further!
 builder.Services.AddHostedService<UserMessageHandler2>();
 builder.Services.AddHostedService<UserMessageHandler3>();
 builder.Services.AddHostedService<UserMessageHandler4>();
