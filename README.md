@@ -1,12 +1,13 @@
 # Todo Application
 
+A backend-only (starter) Todo application with separate Web API and Worker services, using RabbitMQ for communication and PostgreSQL for data storage.
+
 ## Table of Contents
 
 <!-- toc -->
 
-- [Overview:](#overview)
-  - [Requirements:](#requirements)
-  - [Deliverables:](#deliverables)
+- [Requirements:](#requirements)
+- [Deliverables:](#deliverables)
 - [Architecture](#architecture)
   - [Technologies:](#technologies)
   - [RabbitMQ Communication Pattern](#rabbitmq-communication-pattern)
@@ -21,11 +22,7 @@
 
 <!-- tocstop -->
 
-## Overview:
-
-Implement a backend-only To-Do application. Swagger will serve as the client interface for this task.
-
-### Requirements:
+## Requirements:
 
 1. Implement RESTful APIs for managing both User and Item entities.
 2. A User can have multiple Items (one-to-many relationship).
@@ -43,7 +40,7 @@ Implement a backend-only To-Do application. Swagger will serve as the client int
 
 7. Communication between the services should be handled via RabbitMQ.
 
-### Deliverables:
+## Deliverables:
 
 - A Docker Compose file that brings up:
   - The web service
