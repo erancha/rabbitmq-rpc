@@ -124,7 +124,6 @@ The schema definitions are managed by the Worker Service and can be found in [Mo
 **Core Entities:**
 
 1. **User** ([Models/User.cs](src/TodoApp.Shared/Models/User.cs)):
-
    - Primary key: `Id` (integer) - _defined in entity model and configured in DbContext_
    - Unique constraints: `Username`, `Email` - _configured in [TodoDbContext.cs](src/TodoApp.WorkerService/Data/TodoDbContext.cs) using Fluent API_ (see note below)
    - Timestamps: `CreatedAt`
@@ -210,6 +209,15 @@ The scalability can be tested using the JMeter test plan: [create-users-test-pla
 Run the following script to check dependencies and start the application:
 
 ```bash
+# Start the application (WSL/Linux)
+./start-todo-app.sh
+
+# If you see:
+#   /bin/bash^M: bad interpreter: No such file or directory
+# it means the script has Windows CRLF line endings.
+# Convert it to Unix LF and try again:
+dos2unix start-todo-app.sh 2>/dev/null || sed -i 's/\r$//' start-todo-app.sh
+chmod +x start-todo-app.sh
 ./start-todo-app.sh
 ```
 
@@ -221,7 +229,7 @@ The following services will be available:
 
 - [WebAPI](http://localhost:5000) (available on localhost:**5000**)
 - RabbitMQ (available on localhost:**5672**) and [Management UI](http://localhost:15672) (available on localhost:**15672**)
-- PostgreSQL (available on localhost:**5432**)
+- PostgreSQL (available on localhost:**5432**, database name: **tododb**)
 
 ## Project Structure
 
