@@ -52,7 +52,7 @@ services:
           memory: "256M"  # nano: "128M", micro: "256M", small: "384M"
 
   postgres:
-    image: postgres:latest
+    image: postgres:17
     environment:
       - POSTGRES_DB=tododb
       - POSTGRES_USER=postgres

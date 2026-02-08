@@ -92,19 +92,29 @@ NC='\033[0m' # No Color
 
 # Check for Docker
 if command -v docker &> /dev/null; then
-    echo -e "${GREEN}✓ Docker is installed: $(docker --version)${NC}"
+    if docker info &> /dev/null; then
+        echo -e "${GREEN}✓ Docker is installed: $(docker --version)${NC}"
+    else
+        echo -e "${RED}Error: Docker is installed but not available in this environment.${NC}"
+        echo -e "${YELLOW}If you're running in WSL, enable Docker Desktop WSL integration for this distro (Settings -> Resources -> WSL Integration).${NC}"
+        exit 1
+    fi
 else
     echo -e "${RED}Error: Docker is not installed or not running.${NC}"
     echo -e "${YELLOW}Please install Docker Desktop from https://www.docker.com/products/docker-desktop${NC}"
     exit 1
 fi
 
-# Check for Docker Compose
-if command -v docker-compose &> /dev/null; then
+# Check for Docker Compose (prefer v2: `docker compose`)
+if docker compose version &> /dev/null; then
+    COMPOSE_CMD=(docker compose)
+    echo -e "${GREEN}✓ Docker Compose is installed: $(docker compose version)${NC}"
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE_CMD=(docker-compose)
     echo -e "${GREEN}✓ Docker Compose is installed: $(docker-compose --version)${NC}"
 else
     echo -e "${RED}Error: Docker Compose is not installed.${NC}"
-    echo -e "${YELLOW}Docker Compose should be included with Docker Desktop${NC}"
+    echo -e "${YELLOW}Install Docker Desktop (recommended) or Docker Compose for your distro.${NC}"
     exit 1
 fi
 
@@ -133,22 +143,22 @@ else
 fi
 
 # Build and start the services
-if ! docker-compose up $BUILD_FLAGS -d; then
+if ! "${COMPOSE_CMD[@]}" up $BUILD_FLAGS -d; then
     echo -e "${RED}Warning: Issues detected while starting the application.${NC}"
     echo -e "${YELLOW}Checking container status...${NC}"
-    docker-compose ps
-    echo -e "${YELLOW}You can still use 'docker-compose' commands to troubleshoot.${NC}"
+    "${COMPOSE_CMD[@]}" ps
+    echo -e "${YELLOW}You can still use Docker Compose commands to troubleshoot.${NC}"
 fi
 
 # Show containers and endpoints
 echo -e "\n${CYAN}Showing container logs...${NC}"
 if [ "$2" = "--follow" ] || [ "$2" = "-f" ]; then
     echo "Following logs (Ctrl+C to stop)..."
-    docker-compose logs -f
+    "${COMPOSE_CMD[@]}" logs -f
 else
-    docker-compose logs ps
+    "${COMPOSE_CMD[@]}" ps
     echo -e "\n${GREEN}Services are running in the background.${NC}"
-    echo -e "Use 'docker-compose logs -f' to follow logs"
+    echo -e "Use 'docker compose logs -f' (or 'docker-compose logs -f') to follow logs"
 
     echo -e "${GREEN}Available endpoints:${NC}"
     echo -e "- WebAPI: ${CYAN}http://localhost:5000${NC}"
