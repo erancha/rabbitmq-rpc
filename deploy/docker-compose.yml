@@ -27,6 +27,7 @@ services:
 
   worker:
     image: erancha/todo-app:worker-latest
+    # image: erancha/todo-app:worker-2-latest
     environment:
       - ConnectionStrings__DefaultConnection=Host=postgres;Database=tododb;Username=postgres;Password=postgres
       - RabbitMQ__Host=rabbitmq
@@ -46,7 +47,7 @@ services:
         tag: "{{.Name}}/{{.ID}}"
         mode: "non-blocking"
     deploy:
-      replicas: 1
+      replicas: 2
       resources:
         limits:
           memory: "256M"  # nano: "128M", micro: "256M", small: "384M"
@@ -57,6 +58,7 @@ services:
       - POSTGRES_DB=tododb
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
+      # - POSTGRES_INITDB_ARGS="--shared-preload-libraries=pg_stat_statements"
     logging:
       driver: "json-file"  # logs in /var/lib/docker/containers/<container_id>/<container_id>-json.log. Find ID with: docker compose ps -q <service_name> or docker inspect <service_name>
       options:

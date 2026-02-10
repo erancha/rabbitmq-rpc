@@ -22,12 +22,15 @@ try_command() {
 }
 
 # Build WebAPI image
+WEB_API_TAG=$TAG
 echo -e "\n\033[33mBuilding WebAPI image...\033[0m"
-try_command docker build -t "todo-app:webapi-$TAG" -f src/TodoApp.WebApi/Dockerfile .
+try_command docker build -t "todo-app:webapi-$WEB_API_TAG" -f src/TodoApp.WebApi/Dockerfile .
 
 # Build Worker image
+WORKER_TAG=$TAG
+# WORKER_TAG="2-$TAG" # 2 hosted services
 echo -e "\n\033[33mBuilding Worker image...\033[0m"
-try_command docker build -t "todo-app:worker-$TAG" -f src/TodoApp.WorkerService/Dockerfile .
+try_command docker build -t "todo-app:worker-$WORKER_TAG" -f src/TodoApp.WorkerService/Dockerfile .
 
 # Test Docker Hub connectivity
 echo -e "\033[36mTesting Docker Hub connectivity...\033[0m"
@@ -38,12 +41,12 @@ fi
 
 # Tag & push to Docker Hub
 echo -e "\033[33mPushing WebAPI image to Docker Hub...\033[0m"
-try_command docker tag "todo-app:webapi-$TAG" "$DOCKER_HUB_USERNAME/todo-app:webapi-$TAG"
-try_command docker push "$DOCKER_HUB_USERNAME/todo-app:webapi-$TAG"
+try_command docker tag "todo-app:webapi-$WEB_API_TAG" "$DOCKER_HUB_USERNAME/todo-app:webapi-$WEB_API_TAG"
+try_command docker push "$DOCKER_HUB_USERNAME/todo-app:webapi-$WEB_API_TAG"
 
 echo -e "\033[33mPushing Worker image to Docker Hub...\033[0m"
-try_command docker tag "todo-app:worker-$TAG" "$DOCKER_HUB_USERNAME/todo-app:worker-$TAG"
-try_command docker push "$DOCKER_HUB_USERNAME/todo-app:worker-$TAG"
+try_command docker tag "todo-app:worker-$WORKER_TAG" "$DOCKER_HUB_USERNAME/todo-app:worker-$WORKER_TAG"
+try_command docker push "$DOCKER_HUB_USERNAME/todo-app:worker-$WORKER_TAG"
 
 echo -e "\n\033[32m✅ Successfully built and pushed all images!\033[0m"
 echo "You can now run transform-compose.sh to create the deployment configuration."

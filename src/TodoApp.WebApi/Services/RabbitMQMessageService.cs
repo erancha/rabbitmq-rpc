@@ -171,8 +171,8 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         var timeoutTask = Task.Delay(TimeSpan.FromSeconds(_config.RpcTimeoutSeconds));
 
         // Block until either:
-        // 1. Response received (tcs completed by consumer)
-        // 2. Timeout occurs
+        //   1. Response received (tcs completed by consumer)
+        //   2. Timeout occurs
         var completedTask = await Task.WhenAny(tcs.Task, timeoutTask);
 
         if (completedTask == timeoutTask)

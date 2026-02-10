@@ -6,9 +6,7 @@ src/TodoApp.WorkerService/bin
 src/TodoApp.WorkerService/obj
 README-toc.cmd
 .config/dotnet-tools.json
-aws/aws-configure.ps1
 aws/aws-configure.sh
-aws/test-deploy.ps1
 aws/test-deploy.sh
-jmeter/results.jtl
+jmeter/*.jtl
 jmeter/jmeter.log

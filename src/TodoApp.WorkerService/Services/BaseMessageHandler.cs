@@ -87,6 +87,9 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
                 }
 
                 message = Encoding.UTF8.GetString(ea.Body.ToArray());
+                // TODO: Ensure idempotency for at-least-once delivery. RabbitMQ can redeliver messages if a consumer crashes/disconnects before ack.
+                // TODO: Implement deduplication (e.g., persist ea.BasicProperties.CorrelationId and/or ea.BasicProperties.MessageId with a DB uniqueness constraint)
+                // TODO: so that retries/redeliveries do not cause duplicate writes/side-effects.
                 var rpcResponse = await ProcessMessage(messageType, message);
                 _channel.BasicAck(ea.DeliveryTag, multiple: false);
 

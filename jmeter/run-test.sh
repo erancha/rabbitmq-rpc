@@ -3,13 +3,32 @@
 # Set working directory to script location
 cd "$(dirname "$0")"
 
+test_mode="${1:-minimal}"
+
+case "$test_mode" in
+    minimal)
+        test_plan="test-minimal.jmx"
+        results_file="results-minimal.jtl"
+        ;;
+    long)
+        test_plan="test-long.jmx"
+        results_file="results-long.jtl"
+        ;;
+    *)
+        echo "Usage: $0 [minimal|long]"
+        exit 2
+        ;;
+esac
+
 # Record start time
 start_time=$(date +%s)
 
 # Run JMeter test in non-GUI mode
 jmeter -Djava.security.egd=file:/dev/urandom \
        -Dxstream.allow=org.apache.jmeter.save.ScriptWrapper \
-       -n -t create-users-test-plan.jmx -l results.jtl
+       -n -t "$test_plan" -l "$results_file"
+
+exit_code=$?
 
 # Record end time and calculate duration
 end_time=$(date +%s)
@@ -18,9 +37,9 @@ minutes=$((duration / 60))
 seconds=$((duration % 60))
 
 # Check if test was successful
-if [ $? -eq 0 ]; then
+if [ $exit_code -eq 0 ]; then
     echo "Test completed successfully in ${minutes}m ${seconds}s!"
-    echo "Results available in: ./results.jtl"
+    echo "Results available in: ./${results_file}"
 
     # Check container logs for errors and warnings
     # echo "Checking container logs for issues..."
@@ -38,6 +57,8 @@ if [ $? -eq 0 ]; then
     # docker compose -p todo-app logs rabbitmq 2>&1 | grep -i -E "error|warn|fail|exception" || echo "No issues found"
 else
     echo "Test failed after ${minutes}m ${seconds}s!"
+    echo "Results available in: ./${results_file}"
+    exit $exit_code
 fi
 
 

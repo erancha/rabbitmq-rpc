@@ -8,7 +8,8 @@
 - [Publishing Images](#publishing-images)
 - [Creating Deployment Configuration](#creating-deployment-configuration)
 - [Starting the application](#starting-the-application)
-  * [Services](#services)
+- [JMeter load testing](#jmeter-load-testing)
+  * [What to expect](#what-to-expect)
 
 <!-- tocstop -->
 
@@ -17,52 +18,86 @@ This folder contains the deployment configuration for the Todo application with 
 ## Prerequisites
 
 - Docker and Docker Compose installed
-- PowerShell or bash (for running the scripts)
 - Docker Hub account
+- bash (for running the scripts)
 
 ## Publishing Images
 
-1. Login to Docker Hub:
+This is **only required** if the images were not already pushed during development (see the root [README](../README.md)).
 
-```powershell
+```bash
+# Login to Docker Hub
 docker login
-```
 
-2. Build and push the images to Docker Hub:
+# Build and push the images to Docker Hub
+./deploy/push-images.sh "your-dockerhub-username"
 
-```powershell
-.\deploy\push-images.ps1 -DockerHubUsername "your-dockerhub-username"
-```
-
-Optionally, you can specify a custom tag:
-
-```powershell
-.\deploy\push-images.ps1 -DockerHubUsername "your-dockerhub-username" -Tag "v1.0"
+# Optional: specify a custom tag
+./deploy/push-images.sh "your-dockerhub-username" "v1.0"
 ```
 
 ## Creating Deployment Configuration
 
-1. Transform the docker-compose.yml using your Docker Hub username:
+Transform the root [docker-compose.yml](../docker-compose.yml) using your Docker Hub username:
 
-```powershell
-.\transform-compose.ps1 -DockerHubUsername "your-dockerhub-username"
+```bash
+./deploy/transform-compose.sh "your-dockerhub-username"
 ```
 
-2. This will create a `docker-compose.yml` in this folder that uses pre-built Docker images instead of building from source.
-
-3. Start the application:
+This will create or refresh [`deploy/docker-compose.yml`](./docker-compose.yml) that uses pre-built Docker images instead of building from source.
 
 ## Starting the application
 
-```powershell
-docker-compose up -d
+```bash
+docker compose -p todo-app up -d
 ```
 
-### Services
+Run the simple smoke test:
 
-The application consists of:
+```bash
+./simple-test.sh
+```
 
-- [WebAPI](http://localhost:5000) (available on localhost:**5000**)
-- Worker Service
-- RabbitMQ (available on localhost:**5672**) and [Management UI](http://localhost:15672) (available on localhost:**15672**)
-- PostgreSQL (available on localhost:**5432**)
+To stop the application:
+
+```bash
+docker compose -p todo-app down
+
+# Optional: also remove volumes (will delete local postgres data)
+docker compose -p todo-app down -v
+```
+
+## JMeter load testing
+
+From the repository root you can run the included script.
+
+```bash
+# Default (minimal) test
+./jmeter/run-test.sh
+./jmeter/run-test.sh minimal
+
+# Long test
+./jmeter/run-test.sh long
+```
+
+### What to expect
+
+These test plans submit `POST /api/v1/Users` requests with a unique `username` + `email` per request (JMeter uses thread/counter/UUID variables), so each successful request should create a new User.
+
+- **Minimal test (`test-minimal.jmx`)**
+  - **Load shape**: 2 threads \* 5 loops = **10 requests total**
+  - **Expected PostgreSQL effect**: about **10 new rows** in the Users table
+
+- **Long test (`test-long.jmx`)**
+  - **Load shape**: 200 threads \* 500 loops = **100,000 requests total**
+  - **Expected PostgreSQL effect**: up to **100,000 new rows** in the Users table (assuming all requests succeed)
+
+Notes:
+
+- If some requests fail (timeouts, 5xx, RabbitMQ backpressure, etc.), the number of created rows will be lower.
+- Re-running the tests will create additional rows (it is not a fixed-size / idempotent seed), since each request uses a new UUID.
+
+Results are written to:
+
+- `jmeter/results-minimal.jtl`
+- `jmeter/results-long.jtl`

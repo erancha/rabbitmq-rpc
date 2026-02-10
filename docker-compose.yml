@@ -1,5 +1,6 @@
 services:
   webapi:
+    image: todo-app:webapi-${TAG:-dev}
     build:
       context: .
       dockerfile: src/TodoApp.WebApi/Dockerfile
@@ -29,6 +30,7 @@ services:
           memory: "256M"  # nano: "128M", micro: "256M", small: "384M"
 
   worker:
+    image: todo-app:worker-${TAG:-dev}
     build:
       context: .
       dockerfile: src/TodoApp.WorkerService/Dockerfile
