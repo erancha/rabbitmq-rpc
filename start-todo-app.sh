@@ -165,59 +165,11 @@ else
     echo -e "- RabbitMQ Management UI: ${CYAN}http://localhost:15672${NC} (credentials: guest/guest)"
 fi
 
-# Simple test: One user and two todo items
-echo -e "\n${CYAN}Running simple test...${NC}"
-
 # Wait for services to be fully ready
-WAIT_SECONDS=10
+WAIT_SECONDS=20
 echo "Allowing $WAIT_SECONDS seconds for services to be ready..."
 sleep $WAIT_SECONDS
 
-# Create a user
-echo "Creating test user..."
-MAX_RETRIES=3
-RETRY_COUNT=0
-
-while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    TIMESTAMP=$(date +%s)
-    USER_RESPONSE=$(curl -s -X 'POST' \
-      'http://localhost:5000/api/v1/Users' \
-      -H 'accept: */*' \
-      -H 'Content-Type: application/json' \
-      -d "{\"username\": \"testuser_$TIMESTAMP\", \"email\": \"testuser_$TIMESTAMP@gmail.com\"}")
-    
-    if [[ $USER_RESPONSE == *"createdId"* ]]; then
-        # Extract the created user ID
-        USER_ID=$(echo $USER_RESPONSE | grep -o '"createdId":[0-9]*' | cut -d ':' -f2)
-        echo -e "${GREEN}Created user with ID: $USER_ID${NC}"
-        break
-    else
-        RETRY_COUNT=$((RETRY_COUNT + 1))
-        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-            echo -e "${YELLOW}Retrying user creation in 2 seconds...${NC}"
-            sleep 2
-        else
-            echo -e "${RED}Failed to create user after $MAX_RETRIES attempts. Response: $USER_RESPONSE${NC}"
-            exit 1
-        fi
-    fi
-done
-
-# Create two todo items for the user
-echo "Creating test todo items..."
-for i in {1..2}; do
-    TODO_RESPONSE=$(curl -s -X 'POST' \
-      'http://localhost:5000/api/v1/TodoItems' \
-      -H 'accept: */*' \
-      -H 'Content-Type: application/json' \
-      -d "{\"title\": \"Todo $i\", \"description\": \"Description for todo $i\", \"userId\": $USER_ID}")
-    
-    if [[ $TODO_RESPONSE == *"createdId"* ]]; then
-        TODO_ID=$(echo $TODO_RESPONSE | grep -o '"createdId":[0-9]*' | cut -d ':' -f2)
-        echo -e "${GREEN}Created todo item $i with ID: $TODO_ID${NC}"
-    else
-        echo -e "${RED}Failed to create todo item $i. Response: $TODO_RESPONSE${NC}"
-    fi
-done
+GREEN="$GREEN" RED="$RED" YELLOW="$YELLOW" CYAN="$CYAN" NC="$NC" bash ./deploy/simple-test.sh
 
 # cd jmeter && ./run-test.sh && cd ..

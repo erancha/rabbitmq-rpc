@@ -38,27 +38,9 @@ builder.Services.AddHostedService<DbInitializationService>();
 // Multiple instances for increased throughput - using wrapper classes since AddHostedService<T> creates singletons
 builder.Services.AddHostedService<UserMessageHandler>();
 #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
-#region UserMessageHandler Registrations (15 instances)
-//TODO: These wrappers are a temp workaround to force additional instances - research further!
-builder.Services.AddHostedService<UserMessageHandler2>();
-builder.Services.AddHostedService<UserMessageHandler3>();
-builder.Services.AddHostedService<UserMessageHandler4>();
-builder.Services.AddHostedService<UserMessageHandler5>();
-builder.Services.AddHostedService<UserMessageHandler6>();
-builder.Services.AddHostedService<UserMessageHandler7>();
-builder.Services.AddHostedService<UserMessageHandler8>();
-builder.Services.AddHostedService<UserMessageHandler9>();
-builder.Services.AddHostedService<UserMessageHandler10>();
-builder.Services.AddHostedService<UserMessageHandler11>();
-builder.Services.AddHostedService<UserMessageHandler12>();
-builder.Services.AddHostedService<UserMessageHandler13>();
-builder.Services.AddHostedService<UserMessageHandler14>();
-builder.Services.AddHostedService<UserMessageHandler15>();
-// builder.Services.AddHostedService<UserMessageHandler16>();
-// builder.Services.AddHostedService<UserMessageHandler17>();
-// builder.Services.AddHostedService<UserMessageHandler18>();
-// builder.Services.AddHostedService<UserMessageHandler19>();
-// builder.Services.AddHostedService<UserMessageHandler20>();
+#region UserMessageHandler Registrations
+// TODO: This wrappers is a temp workaround to force additional instance - research further!
+// builder.Services.AddHostedService<UserMessageHandler2>();
 #endregion
 #pragma warning restore CS1591
 builder.Services.AddHostedService<TodoItemMessageHandler>();

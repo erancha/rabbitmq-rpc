@@ -28,8 +28,6 @@ public abstract class BaseApiController : ControllerBase
     /// Success response: 200 OK with data if present, createdId if available, or no content
     /// Error response: { success: false, errorMessage: string }
     /// </returns>
-
-
     protected IActionResult HandleRpcResponse(string responseJson)
     {
         _logger.LogInformation("Handling RPC response: {Response}", responseJson);
@@ -81,6 +79,15 @@ public abstract class BaseApiController : ControllerBase
             _ => StatusCodes.Status500InternalServerError,
         };
 
+    /// <summary>
+    /// Converts controller-local validation into an HTTP response.
+    /// If validation fails, returns <see cref="BadRequestObjectResult"/> with a simple payload.
+    /// If validation succeeds, returns <c>null</c> so the caller can continue processing.
+    /// </summary>
+    /// <param name="validationResult">The result of local validation performed by the controller.</param>
+    /// <returns>
+    /// A <see cref="BadRequestObjectResult"/> when <paramref name="validationResult"/> is invalid; otherwise <c>null</c>.
+    /// </returns>
     protected IActionResult HandleLocalResponse(LocalValidationResult validationResult)
     {
         if (!validationResult.IsValid)

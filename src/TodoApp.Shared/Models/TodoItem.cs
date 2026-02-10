@@ -1,5 +1,11 @@
 namespace TodoApp.Shared.Models;
 
+// Notes:
+// - Primary key: Id (integer)
+// - Foreign key: UserId (references User)
+// - Soft delete support: IsDeleted, DeletedAt
+// - Status tracking: IsCompleted, CompletedAt
+// - Timestamps: CreatedAt
 public class TodoItem
 {
     public int Id { get; set; }
