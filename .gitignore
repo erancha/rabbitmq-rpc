@@ -1,6 +1,5 @@
 bin/
 obj/
-scripts/README-toc.cmd
 .config/dotnet-tools.json
 aws/aws-configure.sh
 aws/test-deploy.sh
