@@ -1,8 +1,7 @@
 bin/
 obj/
 .config/dotnet-tools.json
-aws/aws-configure.sh
-aws/test-deploy.sh
+aws/
 jmeter/*.jtl
 jmeter/jmeter.log
 docs/senior-code-eval-*
