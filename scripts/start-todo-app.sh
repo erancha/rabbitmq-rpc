@@ -19,39 +19,20 @@
 #    - Set Ubuntu as default WSL environment: wsl --set-default Ubuntu  # This affects WSL terminal integration, not Docker
 #    - Verify installation: wsl -l -v
 #
-# 4. Development Environment Setup:
-#    a. Docker Desktop Setup (do this in Windows, not WSL):
-#       1. Download and install Docker Desktop from https://www.docker.com/products/docker-desktop
-#       2. After installation, enable WSL integration:
-#          - Open Docker Desktop
-#          - Click on Settings (gear icon)
-#          - Go to 'Resources' -> 'WSL Integration'
-#          - Check the box next to 'Ubuntu'
-#          - Click 'Apply & Restart'
-#       3. Verify in WSL by running:
-#          docker --version
-#          docker compose version
+# 4. Docker Desktop Setup (do this in Windows, not WSL):
+#    1. Download and install Docker Desktop from https://www.docker.com/products/docker-desktop
+#    2. After installation, enable WSL integration:
+#       - Open Docker Desktop
+#       - Click on Settings (gear icon)
+#       - Go to 'Resources' -> 'WSL Integration'
+#       - Check the box next to 'Ubuntu'
+#       - Click 'Apply & Restart'
+#    3. Verify in WSL by running:
+#       docker --version
+#       docker compose version
 #
-#    b. .NET SDK Installation in WSL (required even if you have .NET installed in Windows):
-#       - The script runs in WSL environment, so it needs .NET SDK installed in Linux
-#       - In WSL Ubuntu terminal, run these commands:
-#         # Download and run Microsoft's installation script
-#         wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
-#         chmod +x dotnet-install.sh
-#         ./dotnet-install.sh --version latest
-#         rm dotnet-install.sh
-#
-#         # Add .NET to PATH (two options):
-#         # Option 1: Add to current session
-#         export DOTNET_ROOT=$HOME/.dotnet
-#         export PATH=$PATH:$DOTNET_ROOT:$DOTNET_ROOT/tools
-#
-#         # Option 2: Add permanently to ~/.bashrc
-#         echo 'export DOTNET_ROOT=$HOME/.dotnet' >> ~/.bashrc
-#         echo 'export PATH=$PATH:$DOTNET_ROOT:$DOTNET_ROOT/tools' >> ~/.bashrc
-#         source ~/.bashrc  # Apply changes to current session
-#
-#       - Verify installation: dotnet --version
+#    Docker is the only host prerequisite: both services compile inside the
+#    mcr.microsoft.com/dotnet/sdk:8.0 build stage, so no .NET SDK is needed on the host.
 #
 # 5. Navigating and Executing this Script in WSL:
 #    First, start WSL by either:
@@ -124,15 +105,6 @@ fi
 # The compose file lives beside this script rather than at the repo root, so every invocation must
 # name it explicitly; relative build contexts inside it resolve against the file's directory.
 COMPOSE_CMD+=(-f "$COMPOSE_FILE")
-
-# Check for .NET SDK
-if command -v dotnet &> /dev/null; then
-    echo -e "${GREEN}✓ .NET SDK is installed: $(dotnet --version)${NC}"
-else
-    echo -e "${RED}Error: .NET SDK is not installed.${NC}"
-    echo -e "${YELLOW}Please install .NET 8.0 SDK from https://dotnet.microsoft.com/download/dotnet/8.0${NC}"
-    exit 1
-fi
 
 # Start the application
 echo -e "\n${CYAN}Starting the Todo application...${NC}"

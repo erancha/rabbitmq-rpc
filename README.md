@@ -21,9 +21,11 @@ The Web API delegates every request to the Worker Service over a RabbitMQ RPC pa
 ### Prerequisites
 
 - Docker and Docker Compose
-- .NET 8.0 SDK
 
-Run the following script to check dependencies and start the application:
+The services compile inside the .NET 8.0 SDK image during the Docker build, so a host .NET SDK is
+needed only to build or edit `src/TodoApp.sln` outside Docker.
+
+To start the application:
 
 ```bash
 # Start the application (WSL/Linux)
