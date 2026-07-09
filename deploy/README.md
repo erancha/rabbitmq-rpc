@@ -73,11 +73,11 @@ From the repository root you can run the included script.
 
 ```bash
 # Default (minimal) test
-./jmeter/run-test.sh
-./jmeter/run-test.sh minimal
+./scripts/jmeter-helper.sh
+./scripts/jmeter-helper.sh minimal
 
 # Long test
-./jmeter/run-test.sh long
+./scripts/jmeter-helper.sh long
 ```
 
 ### What to expect

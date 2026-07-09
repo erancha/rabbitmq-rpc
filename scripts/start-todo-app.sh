@@ -151,4 +151,4 @@ sleep $WAIT_SECONDS
 
 GREEN="$GREEN" RED="$RED" YELLOW="$YELLOW" CYAN="$CYAN" NC="$NC" bash "$REPO_ROOT/deploy/simple-test.sh"
 
-# cd jmeter && ./run-test.sh && cd ..
+# ./scripts/jmeter-helper.sh
