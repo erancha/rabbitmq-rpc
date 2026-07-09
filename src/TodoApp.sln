@@ -5,11 +5,11 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TodoApp.WebApi", "src\TodoApp.WebApi\TodoApp.WebApi.csproj", "{0B48EC74-7D48-4E9A-9F4A-2F4869C1874A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TodoApp.WebApi", "TodoApp.WebApi\TodoApp.WebApi.csproj", "{0B48EC74-7D48-4E9A-9F4A-2F4869C1874A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TodoApp.WorkerService", "src\TodoApp.WorkerService\TodoApp.WorkerService.csproj", "{FD1270BD-A9FE-4718-86F4-740EC07B07BD}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TodoApp.WorkerService", "TodoApp.WorkerService\TodoApp.WorkerService.csproj", "{FD1270BD-A9FE-4718-86F4-740EC07B07BD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TodoApp.Shared", "src\TodoApp.Shared\TodoApp.Shared.csproj", "{F9489D04-117C-4CDD-BB84-B7A1C5F0A75E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TodoApp.Shared", "TodoApp.Shared\TodoApp.Shared.csproj", "{F9489D04-117C-4CDD-BB84-B7A1C5F0A75E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

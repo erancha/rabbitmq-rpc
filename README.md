@@ -60,7 +60,7 @@ The application implements a robust RabbitMQ RPC communication pattern with dire
 
 See the diagram for how the WebAPI uses [RabbitMQ RPC Pattern](#rabbitmq-communication-pattern) to delegate requests it receives to the Worker Service and wait for responses.
 
-![Todo App Architecture Diagram](architecture-diagram.svg)
+![Todo App Architecture Diagram](docs/architecture-diagram.svg)
 
 ### Features
 
@@ -204,15 +204,7 @@ Run the following script to check dependencies and start the application:
 
 ```bash
 # Start the application (WSL/Linux)
-./start-todo-app.sh
-
-# If you see:
-#   /bin/bash^M: bad interpreter: No such file or directory
-# it means the script has Windows CRLF line endings.
-# Convert it to Unix LF and try again:
-dos2unix start-todo-app.sh 2>/dev/null || sed -i 's/\r$//' start-todo-app.sh
-chmod +x start-todo-app.sh
-./start-todo-app.sh
+./scripts/start-todo-app.sh
 ```
 
 The following services will be available:

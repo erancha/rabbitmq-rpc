@@ -1,12 +1,9 @@
-src/TodoApp.Shared/bin
-src/TodoApp.Shared/obj
-src/TodoApp.WebApi/bin
-src/TodoApp.WebApi/obj
-src/TodoApp.WorkerService/bin
-src/TodoApp.WorkerService/obj
-README-toc.cmd
+bin/
+obj/
+scripts/README-toc.cmd
 .config/dotnet-tools.json
 aws/aws-configure.sh
 aws/test-deploy.sh
 jmeter/*.jtl
 jmeter/jmeter.log
+docs/senior-code-eval-*

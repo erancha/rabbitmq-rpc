@@ -38,7 +38,7 @@ docker login
 
 ## Creating Deployment Configuration
 
-Transform the root [docker-compose.yml](../docker-compose.yml) using your Docker Hub username:
+Transform the source [docker-compose.yml](../scripts/docker-compose.yml) using your Docker Hub username:
 
 ```bash
 ./deploy/transform-compose.sh "your-dockerhub-username"

@@ -61,8 +61,8 @@
 #    Then:
 #    - Your Windows C: drive is mounted in WSL at /mnt/c
 #    - To navigate to this script from WSL: cd /mnt/c/Projects/dotnet/rabbitmq-rpc
-#    - Make script executable (first time only): chmod +x start-todo-app.sh
-#    - Run the script: ./start-todo-app.sh
+#    - Make script executable (first time only): chmod +x scripts/start-todo-app.sh
+#    - Run the script: ./scripts/start-todo-app.sh
 
 # 6. Troubleshooting:
 #    Docker Desktop Issues:
@@ -82,6 +82,9 @@
 
 # Set error handling
 set -e
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+COMPOSE_FILE="$REPO_ROOT/scripts/docker-compose.yml"
 
 # Color definitions
 GREEN='\033[0;32m'
@@ -117,6 +120,10 @@ else
     echo -e "${YELLOW}Install Docker Desktop (recommended) or Docker Compose for your distro.${NC}"
     exit 1
 fi
+
+# The compose file lives beside this script rather than at the repo root, so every invocation must
+# name it explicitly; relative build contexts inside it resolve against the file's directory.
+COMPOSE_CMD+=(-f "$COMPOSE_FILE")
 
 # Check for .NET SDK
 if command -v dotnet &> /dev/null; then
@@ -158,7 +165,7 @@ if [ "$2" = "--follow" ] || [ "$2" = "-f" ]; then
 else
     "${COMPOSE_CMD[@]}" ps
     echo -e "\n${GREEN}Services are running in the background.${NC}"
-    echo -e "Use 'docker compose logs -f' (or 'docker-compose logs -f') to follow logs"
+    echo -e "Use 'docker compose -f $COMPOSE_FILE logs -f' to follow logs"
 
     echo -e "${GREEN}Available endpoints:${NC}"
     echo -e "- WebAPI: ${CYAN}http://localhost:5000${NC}"
@@ -170,6 +177,6 @@ WAIT_SECONDS=20
 echo "Allowing $WAIT_SECONDS seconds for services to be ready..."
 sleep $WAIT_SECONDS
 
-GREEN="$GREEN" RED="$RED" YELLOW="$YELLOW" CYAN="$CYAN" NC="$NC" bash ./deploy/simple-test.sh
+GREEN="$GREEN" RED="$RED" YELLOW="$YELLOW" CYAN="$CYAN" NC="$NC" bash "$REPO_ROOT/deploy/simple-test.sh"
 
 # cd jmeter && ./run-test.sh && cd ..

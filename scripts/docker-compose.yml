@@ -2,7 +2,7 @@ services:
   webapi:
     image: todo-app:webapi-${TAG:-dev}
     build:
-      context: .
+      context: ..
       dockerfile: src/TodoApp.WebApi/Dockerfile
     ports:
       - "5000:8080"
@@ -32,7 +32,7 @@ services:
   worker:
     image: todo-app:worker-${TAG:-dev}
     build:
-      context: .
+      context: ..
       dockerfile: src/TodoApp.WorkerService/Dockerfile
     environment:
       - DOTNET_ENVIRONMENT=Development

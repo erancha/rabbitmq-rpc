@@ -13,7 +13,7 @@ TAG=${2:-latest}
 cd "$(dirname "$0")"
 
 # Create a temporary file for transformations
-cp "../docker-compose.yml" "./docker-compose.yml.tmp"
+cp "../scripts/docker-compose.yml" "./docker-compose.yml.tmp"
 
 # Replace webapi build section with image reference
 sed -i -E '

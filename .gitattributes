@@ -1,0 +1,3 @@
+# Shell scripts and compose files are executed from WSL and Linux containers, where a CR before the
+# newline is part of the interpreter path and the command name.
+* text=auto eol=lf
