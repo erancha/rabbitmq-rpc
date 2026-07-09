@@ -34,10 +34,11 @@ To start the application:
 
 The following services will be available:
 
-- [WebAPI](http://localhost:5000) (available on localhost:**5000**)
-- Worker Service
-- RabbitMQ (available on localhost:**5672**) and [Management UI](http://localhost:15672) (available on localhost:**15672**)
-- PostgreSQL (available on localhost:**5432**, database name: **tododb**)
+- WebAPI service ([http://localhost:5000](http://localhost:5000))
+- Worker service
+- RabbitMQ (available on localhost:**5672**) and Management UI ([http://localhost:15672](http://localhost:15672))
+- PostgreSQL (database name: **tododb**), reachable only from the compose network. To open a shell
+  against it: `docker compose -p todo-app exec postgres psql -U postgres -d tododb`
 
 To stop the application:
 
