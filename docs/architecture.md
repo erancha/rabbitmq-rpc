@@ -29,7 +29,7 @@ This application uses RabbitMQ's Direct Exchange with RPC (Remote Procedure Call
 2.  The Worker Service:
 
     2.1. [Binds its queues to these routing keys](../src/TodoApp.WorkerService/Helpers/RabbitMQSetup.cs) and receives relevant messages.
-    - If you start multiple Worker consumers (either multiple `AddHostedService<...>()` registrations in the same process, or multiple Docker `replicas`), they all consume from the same queue(s) as **competing consumers**: each message is delivered to **one** consumer instance (load-balanced by RabbitMQ, optionally influenced by prefetch).
+    - The worker runs as multiple Docker `replicas` that all consume from the same queue(s) as **competing consumers**: each message is delivered to **one** replica (load-balanced by RabbitMQ, optionally influenced by prefetch).
 
     - RabbitMQ does **not** guarantee exactly-once delivery. With acknowledgements, the practical guarantee is **at-least-once**: if a consumer crashes, disconnects, or fails before acking, RabbitMQ may **redeliver** the message to the same or a different consumer, which can result in **duplicate processing**. To achieve end-to-end “exactly once” behavior, handlers must be idempotent and/or perform deduplication at the application/database level.
 
@@ -115,8 +115,8 @@ The application uses a multi-threaded architecture with async/await patterns and
 
 **Worker Service:**
 
-- **Multiple Handler Instances**: 15 `UserMessageHandler` instances and 1 `TodoItemMessageHandler` instance registered as `IHostedService` ([Program.cs](../src/TodoApp.WorkerService/Program.cs))
-- **Parallel Message Processing**: Each handler runs on its own background thread, consuming messages from RabbitMQ queues independently
+- **One Handler per Queue**: A single `UserMessageHandler` and a single `TodoItemMessageHandler` registered as `IHostedService` ([Program.cs](../src/TodoApp.WorkerService/Program.cs)), each consuming its queue on a dedicated channel
+- **Parallel Message Processing**: Parallelism comes from running multiple worker replicas (see [Scalability notes](#scalability-notes)); within a process, each handler consumes its queue independently
 - **Per-Message DbContext**: Each message handler creates a new scoped `DbContext` instance per message ([UserMessageHandler.cs](../src/TodoApp.WorkerService/Services/UserMessageHandler.cs), [TodoItemMessageHandler.cs](../src/TodoApp.WorkerService/Services/TodoItemMessageHandler.cs)) to avoid thread-safety issues with EF Core
 - **Initialization Synchronization**: `TaskCompletionSource` with `RunContinuationsAsynchronously` ([DbInitializationSignal.cs](../src/TodoApp.WorkerService/Services/DbInitializationSignal.cs)) ensures all message handlers wait for database initialization before processing messages
 
@@ -130,9 +130,19 @@ The application uses a multi-threaded architecture with async/await patterns and
 
 ## Scalability notes
 
-By scaling the number of message handlers in the worker service from 1 to 15 instances, throughput was increased from ~200 to ~1,000 requests per second (5x improvement). This is achieved by registering multiple instances of the same `IHostedService` class in [Program.cs](../src/TodoApp.WorkerService/Program.cs), which creates separate background tasks that process messages in parallel.
+The worker scales horizontally: the compose files set `services.worker.deploy.replicas` (the
+local compose reads it from the `WORKER_REPLICAS` environment variable), and every replica
+consumes the same durable queues as a competing consumer, so RabbitMQ load-balances messages
+across replicas. Raising the replica count is the scaling lever; each handler consumes with
+`prefetchCount: 1`, so a replica is only handed a message when it is free.
+[`scripts/optimize-replicas-count.sh`](../scripts/optimize-replicas-count.sh) searches for the
+best count for the host machine.
+
+Each replica runs pending EF migrations at startup. Concurrently starting replicas can race on the
+first boot of an empty database; the compose `restart: unless-stopped` policy retries the replica
+that loses the race.
 
 The scalability can be tested using the JMeter test plans:
 
 - `jmeter/test-minimal.jmx` (2 threads \* 5 loops)
-- `jmeter/test-long.jmx` (200 threads \* 500 loops)
+- `jmeter/test-long.jmx` (200 threads \* 250 loops)

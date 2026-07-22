@@ -34,15 +34,9 @@ builder.Services.AddDbContext<TodoDbContext>(options =>
 builder.Services.AddSingleton<DbInitializationSignal>();
 builder.Services.AddHostedService<DbInitializationService>();
 
-// Register message handlers as hosted services (automatically creates singleton instances and manages their lifecycle)
-// Multiple instances for increased throughput - using wrapper classes since AddHostedService<T> creates singletons
+// Register one consumer per queue. Throughput scales horizontally by running more worker
+// replicas (compose: services.worker.deploy.replicas), which compete on the same durable queues.
 builder.Services.AddHostedService<UserMessageHandler>();
-#pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
-#region UserMessageHandler Registrations
-// TODO: This wrappers is a temp workaround to force additional instance - research further!
-// builder.Services.AddHostedService<UserMessageHandler2>();
-#endregion
-#pragma warning restore CS1591
 builder.Services.AddHostedService<TodoItemMessageHandler>();
 
 // Build the application - this finalizes service registration and creates the root service provider.

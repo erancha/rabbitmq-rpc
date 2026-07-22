@@ -54,7 +54,7 @@ services:
         tag: "{{.Name}}/{{.ID}}"
         mode: "non-blocking"
     deploy:
-      replicas: 1
+      replicas: ${WORKER_REPLICAS:-8}  # measured optimum on a 3-core host (scripts/optimize-replicas-count.sh)
       resources:
         limits:
           memory: "256M"  # nano: "128M", micro: "256M", small: "384M"

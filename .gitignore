@@ -4,4 +4,5 @@ obj/
 deploy/aws/
 jmeter/*.jtl
 jmeter/jmeter.log
+jmeter/replica-sweep/
 docs/senior-code-eval-*

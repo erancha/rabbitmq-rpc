@@ -147,21 +147,3 @@ public class UserMessageHandler : BaseMessageHandler
 
     public override void Dispose() { }
 }
-
-// #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
-// #region UserMessageHandler Wrapper Classe
-// TODO: This wrappers is a temp workaround to force additional instance - research further!
-// public class UserMessageHandler2 : UserMessageHandler
-// {
-//     public UserMessageHandler2(
-//         ObjectPool<IModel> channelPool,
-//         IServiceScopeFactory scopeFactory,
-//         ILogger<UserMessageHandler> logger,
-//         DbInitializationSignal dbInitializationSignal)
-//         : base(channelPool, scopeFactory, logger, dbInitializationSignal)
-//     {
-//     }
-// }
-
-// #endregion
-// #pragma warning restore CS1591
