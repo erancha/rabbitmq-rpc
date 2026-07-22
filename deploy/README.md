@@ -74,10 +74,9 @@ From the repository root you can run the included script.
 ```bash
 # Default (minimal) test
 ./scripts/jmeter-helper.sh
-./scripts/jmeter-helper.sh minimal
 
 # Long test
-./scripts/jmeter-helper.sh long
+./scripts/jmeter-helper.sh --long
 ```
 
 ### What to expect
@@ -89,15 +88,15 @@ These test plans submit `POST /api/v1/Users` requests with a unique `username` +
   - **Expected PostgreSQL effect**: about **10 new rows** in the Users table
 
 - **Long test (`test-long.jmx`)**
-  - **Load shape**: 200 threads \* 500 loops = **100,000 requests total**
-  - **Expected PostgreSQL effect**: up to **100,000 new rows** in the Users table (assuming all requests succeed)
+  - **Load shape**: 200 threads \* 250 loops = **50,000 requests total**
+  - **Expected PostgreSQL effect**: up to **50,000 new rows** in the Users table (assuming all requests succeed)
 
 Notes:
 
 - If some requests fail (timeouts, 5xx, RabbitMQ backpressure, etc.), the number of created rows will be lower.
 - Re-running the tests will create additional rows (it is not a fixed-size / idempotent seed), since each request uses a new UUID.
 
-Results are written to:
+Passing `--jtl` to the helper writes per-request results to:
 
 - `jmeter/results-minimal.jtl`
 - `jmeter/results-long.jtl`

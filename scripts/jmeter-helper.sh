@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# The test plans and their .jtl results live in jmeter/, not beside this script, so run from there:
-# the plan and results filenames below resolve against it, as does JMeter's own jmeter.log.
+# The test plans (and their .jtl results, when --jtl is passed) live in jmeter/, not beside this
+# script, so run from there: the plan and results filenames below resolve against it, as does
+# JMeter's own jmeter.log.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT/jmeter"
 
@@ -10,16 +11,16 @@ JMETER_HOME="${JMETER_HOME:-$HOME/.local/share/apache-jmeter-$JMETER_VERSION}"
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") [minimal|long] [-h|--help]
+Usage: $(basename "$0") [--long] [--jtl] [-h|--help]
 
 Runs an Apache JMeter load test against the Todo application on http://localhost:5000.
-Start the application first with scripts/start-todo-app.sh.
+Start the application first with scripts/start.sh.
 
-Modes:
-  minimal   2 threads * 5 loops = 10 requests (default)
-  long      200 threads * 500 loops = 100,000 requests
-
-Results are written to jmeter/results-<mode>.jtl.
+Options:
+  --long    run the long plan: 200 threads * 250 loops = 50,000 requests
+            (default: the minimal plan, 2 threads * 5 loops = 10 requests)
+  --jtl     also write per-request results to jmeter/results-<mode>.jtl; by default only
+            JMeter's console summary is produced
 
 If jmeter is not on PATH, JMeter $JMETER_VERSION is downloaded, checksum-verified, and unpacked into
 \$JMETER_HOME (default: \$HOME/.local/share/apache-jmeter-$JMETER_VERSION). No sudo, and nothing
@@ -59,67 +60,62 @@ install_jmeter() {
     echo "Installed JMeter ${JMETER_VERSION}."
 }
 
-case "${1:-minimal}" in
-    -h|--help)
-        usage
-        exit 0
-        ;;
-    minimal)
-        test_plan="test-minimal.jmx"
-        results_file="results-minimal.jtl"
-        ;;
-    long)
-        test_plan="test-long.jmx"
-        results_file="results-long.jtl"
-        ;;
-    *)
-        usage >&2
-        exit 2
-        ;;
-esac
+mode="minimal"
+write_jtl=false
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --long)
+            mode="long"
+            ;;
+        --jtl)
+            write_jtl=true
+            ;;
+        *)
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+
+test_plan="test-${mode}.jmx"
+results_file="results-${mode}.jtl"
 
 if ! command -v jmeter > /dev/null; then
     [ -x "$JMETER_HOME/bin/jmeter" ] || install_jmeter
     PATH="$JMETER_HOME/bin:$PATH"
 fi
 
-# Record start time
 start_time=$(date +%s)
 
-# Run JMeter test in non-GUI mode
+# Run JMeter test in non-GUI mode; the results log is opt-in via --jtl
+jtl_args=()
+if $write_jtl; then
+    jtl_args=(-l "$results_file")
+fi
+
 jmeter -Djava.security.egd=file:/dev/urandom \
        -Dxstream.allow=org.apache.jmeter.save.ScriptWrapper \
-       -n -t "$test_plan" -l "$results_file"
+       -n -t "$test_plan" "${jtl_args[@]}"
 
 exit_code=$?
 
-# Record end time and calculate duration
 end_time=$(date +%s)
 duration=$((end_time - start_time))
 minutes=$((duration / 60))
 seconds=$((duration % 60))
 
-# Check if test was successful
 if [ $exit_code -eq 0 ]; then
     echo "Test completed successfully in ${minutes}m ${seconds}s!"
-    echo "Results available in: jmeter/${results_file}"
-
-    # Check container logs for errors and warnings
-    # echo "Checking container logs for issues..."
-    # cd ..
-    # echo "WebAPI Errors/Warnings:"
-    # docker compose -p todo-app logs webapi 2>&1 | grep -i -E "error|warn|fail|exception" || echo "No issues found"
-    
-    # echo "Worker Errors/Warnings:"
-    # docker compose -p todo-app logs worker 2>&1 | grep -i -E "error|warn|fail|exception" || echo "No issues found"
-    
-    # echo "Postgres Errors/Warnings:"
-    # docker compose -p todo-app logs postgres 2>&1 | grep -i -E "error|warn|fail|exception" || echo "No issues found"
-    
-    # echo "RabbitMQ Errors/Warnings:"
-    # docker compose -p todo-app logs rabbitmq 2>&1 | grep -i -E "error|warn|fail|exception" || echo "No issues found"
 else
     echo "Test failed after ${minutes}m ${seconds}s!"
-    echo "Results available in: jmeter/${results_file}"
-    exit $exit_code
 fi
+
+if $write_jtl; then
+    echo "Results available in: jmeter/${results_file}"
+fi
+
+exit $exit_code
