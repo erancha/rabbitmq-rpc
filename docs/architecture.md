@@ -1,6 +1,6 @@
 # Architecture
 
-The application implements a robust RabbitMQ RPC communication pattern with direct exchange routing, message persistence, and comprehensive error handling, and uses a clean, minimal database schema with PostgreSQL.
+The WebAPI delegates every request to the Worker Service over RabbitMQ RPC: requests are routed through a durable direct exchange to durable queues, replies come back on a per-instance reply queue matched by correlation ID, and worker errors are returned as typed RPC error responses. The Worker Service is the only writer to a minimal PostgreSQL schema.
 
 See the diagram for how the WebAPI uses the [RabbitMQ RPC pattern](#communication-pattern) to delegate requests it receives to the Worker Service and wait for responses.
 
@@ -45,14 +45,14 @@ This application uses RabbitMQ's Direct Exchange with RPC (Remote Procedure Call
 
 - **Exchange**: A direct exchange `todo-app-exchange` routes messages based on simple **routing keys**, since this app needs deterministic 1:1 routing (`user` -> users queue, `todo` -> todos queue) rather than broadcast (fanout), pattern-based topics, or header-based routing
 - **Queues**: Two dedicated queues for handling user and todo operations respectively
-- **Reply Queues & Correlation IDs**: All RPC requests from one WebApi instance share a single durable reply queue and unique correlation ID to track responses (see **considerations** below)
+- **Reply Queues & Correlation IDs**: All RPC requests from one WebApi instance share a single durable reply queue and unique correlation ID to track responses (see [Trade-offs & implementation notes](#trade-offs--implementation-notes-what-to-pay-attention-to))
 
 ### Error Handling & Reliability
 
 - Message persistence ensures durability across broker restarts (WebApi's [Program.cs](../src/TodoApp.WebApi/Program.cs) and WorkerService's [Program.cs](../src/TodoApp.WorkerService/Program.cs): `durable: true` in exchange and queue declarations)
 - Error handling with message acknowledgment ([UserMessageHandler.cs](../src/TodoApp.WorkerService/Services/UserMessageHandler.cs) and [TodoItemMessageHandler.cs](../src/TodoApp.WorkerService/Services/TodoItemMessageHandler.cs))
-- Automatic reconnection with exponential backoff ([Program.cs](../src/TodoApp.WebApi/Program.cs) and [Program.cs](../src/TodoApp.WorkerService/Program.cs): retry logic with exponential delay)
-- Timeout handling for RPC calls ([RabbitMQMessageService.cs](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs): 10-second timeout for RPC responses)
+- Connection retries with exponential backoff at startup ([Connections.cs](../src/TodoApp.Shared/Configuration/RabbitMQ/Connections.cs)). OPEN — an established connection or the reply consumer's channel is not automatically recovered if it drops later.
+- Timeout handling for RPC calls ([RabbitMQMessageService.cs](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs): configurable via `WebApi__RpcTimeoutSeconds`, 10 seconds by default)
 
 ### Use cases (when RabbitMQ RPC is a good fit)
 
@@ -65,11 +65,11 @@ This application uses RabbitMQ's Direct Exchange with RPC (Remote Procedure Call
 
 - Higher complexity compared to HTTP communication
 - Additional operational overhead for queue management
-- Reply queue design optimized for performance and reliability:
-  - Each WebApi instance creates one durable, named reply queue at startup ([RabbitMQMessageService.cs](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs))
-  - Queue persists across restarts and survives connection failures
-  - Correlation IDs route responses to correct requests within the instance
-  - Trade-off: Our simpler approach is sufficient for most scenarios, while persistent queues require manual cleanup but may handle higher loads
+- Reply queue design:
+  - Each WebApi instance creates one durable, named reply queue at startup ([RabbitMQMessageService.cs](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs)), instead of a temporary queue per request
+  - The queue persists across broker restarts and connection failures, and a single long-lived consumer serves all in-flight requests, avoiding per-request queue/consumer churn
+  - Correlation IDs route responses to the correct pending request within the instance
+  - Trade-off: unlike auto-delete exclusive queues, named durable queues are not cleaned up by the broker — decommissioning a WebApi instance leaves its reply queue behind until deleted manually
 - Potential debugging complexity in distributed scenarios
 
 ## PostgreSQL

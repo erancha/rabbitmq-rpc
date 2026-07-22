@@ -1,14 +1,22 @@
-# Todo Application
+# Durable RPC over RabbitMQ (.NET)
 
-A backend-only (starter) Todo application with separate Web API and Worker services, using RabbitMQ for communication and PostgreSQL (via EF Core) for data storage.
+A two-service .NET backend built around a durable RPC pattern on RabbitMQ: a Web API accepts REST
+calls and delegates every operation through a durable direct exchange to a Worker Service, then
+blocks on the worker's reply — routed back on a per-instance reply queue and matched by
+correlation ID.
 
-RabbitMQ carries request-response (RPC) traffic rather than fire-and-forget messages — the REST caller expects the created entity in the HTTP response, so the Web API blocks on the Worker Service's reply — which buys decoupling and durability without making the API asynchronous.
+RabbitMQ carries request-response (RPC) traffic rather than fire-and-forget messages — the REST
+caller expects the operation's result in the HTTP response — which buys decoupling, broker-mediated
+durability, and competing-consumer scaling of the workers without making the API asynchronous.
+
+The domain exercising the pattern is a deliberately minimal Todo backend (Users and Todo items),
+persisted to PostgreSQL via EF Core by the Worker Service — the only database writer.
 
 **Contents:** [Functional Requirements](docs/requirements.md) · [Architecture](docs/architecture.md) · [Getting Started](#getting-started)
 
 ## Functional Requirements
 
-The REST APIs, entity model, service split, and Docker Compose deliverables the application is built to satisfy are listed in [docs/requirements.md](docs/requirements.md).
+The REST APIs, entity model, service split, and Docker Compose deliverables the demo application is built to satisfy are listed in [docs/requirements.md](docs/requirements.md).
 
 ## Architecture
 

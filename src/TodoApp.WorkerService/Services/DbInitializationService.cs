@@ -4,8 +4,8 @@ using TodoApp.WorkerService.Data;
 namespace TodoApp.WorkerService.Services;
 
 /// <summary>
-/// A hosted service responsible for initializing the database.
-/// Ensures database is ready by running any pending migrations before the application starts.
+/// Hosted service that connects to the database with retries, runs pending EF migrations, and
+/// then marks DbInitializationSignal complete so the message handlers can start consuming.
 /// </summary>
 public class DbInitializationService : IHostedService
 {
@@ -13,12 +13,6 @@ public class DbInitializationService : IHostedService
     private readonly ILogger<DbInitializationService> _logger;
     private readonly DbInitializationSignal _dbInitializationSignal;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DbInitializationService"/> class.
-    /// </summary>
-    /// <param name="serviceProvider">The service provider for dependency resolution.</param>
-    /// <param name="logger">Logger for diagnostic information.</param>
-    /// <param name="dbInitializationSignal">Initialization signal when the service completes.</param>
     public DbInitializationService(
         IServiceProvider serviceProvider,
         ILogger<DbInitializationService> logger,
@@ -29,16 +23,10 @@ public class DbInitializationService : IHostedService
         _dbInitializationSignal = dbInitializationSignal;
     }
 
-    /// <summary>
-    /// Called when the service starts. Performs database migrations and initializes message handlers.
-    /// </summary>
-    /// <param name="cancellationToken">A token that can be used to cancel the startup process.</param>
-    /// <returns>A task representing the startup operation.</returns>
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         try
         {
-            // Get DbContext and prepare for migration
             using var scope = _serviceProvider.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<TodoDbContext>();
 
@@ -94,11 +82,6 @@ public class DbInitializationService : IHostedService
             }
 
             _logger.LogInformation("Database migrations completed");
-
-            // Simulate long initialization
-            // _logger.LogInformation("Simulating long initialization process...");
-            // await Task.Delay(TimeSpan.FromMinutes(1), cancellationToken);
-
             _logger.LogInformation("Database initialization completed");
             _dbInitializationSignal.MarkAsComplete();
         }
@@ -109,11 +92,6 @@ public class DbInitializationService : IHostedService
         }
     }
 
-    /// <summary>
-    /// Called when the service stops. Currently performs no cleanup as the message handlers are scoped.
-    /// </summary>
-    /// <param name="cancellationToken">A token that can be used to cancel the shutdown process.</param>
-    /// <returns>A completed task since no async cleanup is required.</returns>
     public Task StopAsync(CancellationToken cancellationToken)
     {
         return Task.CompletedTask;

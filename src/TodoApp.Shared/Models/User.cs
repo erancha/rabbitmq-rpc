@@ -1,10 +1,7 @@
 namespace TodoApp.Shared.Models;
 
-// Notes:
-// - Primary key: Id (integer)
-// - Unique constraints: Username, Email (configured in TodoDbContext using Fluent API)
-// - Timestamps: CreatedAt
-// - One-to-many relationship with TodoItems (configured in TodoDbContext using Fluent API)
+// Username and Email are unique; the constraints and the one-to-many relationship with
+// TodoItems are configured in TodoDbContext (Fluent API), not via attributes here.
 public class User
 {
     public int Id { get; set; }

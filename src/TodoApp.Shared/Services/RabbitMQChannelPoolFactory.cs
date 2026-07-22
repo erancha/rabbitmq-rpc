@@ -4,22 +4,15 @@ using RabbitMQ.Client;
 namespace TodoApp.Shared.Services;
 
 /// <summary>
-/// Factory for creating RabbitMQ channel pools.
-/// Provides reusable methods for setting up channel pooling across different services.
+/// Creates the shared channel pool used by both services for RabbitMQ publishing.
 /// </summary>
 public static class RabbitMQChannelPoolFactory
 {
     /// <summary>
-    /// Creates an ObjectPool<IModel> for RabbitMQ channels.
-    /// 
-    /// Pool Configuration:
-    /// - Maximum retained channels: Environment.ProcessorCount * 2 (default from DefaultObjectPoolProvider)
-    /// - No limit on total allocation - pool only limits retained objects, excess are GC'd
-    /// - The IConnection passed here is injected into ChannelPooledObjectPolicy constructor
-    /// - Pool can allocate unlimited channels but only retains up to MaximumRetained for reuse
+    /// Creates an ObjectPool of channels over the given connection. Allocation is unbounded;
+    /// the pool retains at most Environment.ProcessorCount * 2 channels for reuse (the
+    /// DefaultObjectPoolProvider default) and excess returned channels are discarded.
     /// </summary>
-    /// <param name="connection">The RabbitMQ connection to create channels from</param>
-    /// <returns>A configured ObjectPool for RabbitMQ channels</returns>
     public static ObjectPool<IModel> CreateChannelPool(IConnection connection)
     {
         var policy = new ChannelPooledObjectPolicy(connection);

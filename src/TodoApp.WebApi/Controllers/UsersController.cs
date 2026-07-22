@@ -165,7 +165,6 @@ public class UsersController : BaseApiController
         if (data == null)
             return new LocalValidationResult(false, "Update data cannot be null");
 
-        // Only validate email format if it's provided
         if (data.Email != null && !IsValidEmail(data.Email))
             return new LocalValidationResult(false, "Invalid email format");
 

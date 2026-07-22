@@ -146,7 +146,6 @@ public class TodoItemsController : BaseApiController
         if (data == null)
             return new LocalValidationResult(false, "Update data cannot be null");
 
-        // Only validate title format if it's provided
         if (data.Title != null && string.IsNullOrWhiteSpace(data.Title))
             return new LocalValidationResult(false, "Title cannot be empty when provided");
 

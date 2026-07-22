@@ -17,50 +17,39 @@ public abstract class BaseApiController : ControllerBase
     }
 
     /// <summary>
-    /// Handles RPC responses by converting them to appropriate HTTP responses.
-    /// For success responses:
-    /// For error responses:
-    /// 1. Maps RPC error kinds to HTTP status codes (404 for NOT_FOUND, 400 for VALIDATION,
-    ///    503 for TEMPORARY_UNAVAILABLE, 500 for others)
-    /// 2. Creates a standardized error response that excludes internal error kinds
+    /// Converts a worker RPC response into an HTTP action result.
+    /// Success: 200 OK with the Data payload, the CreatedId when present, or an empty body.
+    /// Error: maps the RPC error kind to an HTTP status code (404 NOT_FOUND, 400 VALIDATION,
+    /// 503 TEMPORARY_UNAVAILABLE, 500 otherwise) and returns { success: false, errorMessage }
+    /// without exposing the internal error kind to HTTP clients.
     /// </summary>
-    /// <param name="result">The RPC response to handle</param>
-    /// <returns>
-    /// Success response: 200 OK with data if present, createdId if available, or no content
-    /// Error response: { success: false, errorMessage: string }
-    /// </returns>
+    /// <param name="responseJson">The serialized RpcResponse received from the worker.</param>
     protected IActionResult HandleRpcResponse(string responseJson)
     {
         _logger.LogInformation("Handling RPC response: {Response}", responseJson);
 
         try
         {
-            // Try to deserialize as generic response first
             var genericResult = JsonDocument.Parse(responseJson);
             var isSuccess = genericResult.RootElement.GetProperty("Success").GetBoolean();
-            
+
             if (!isSuccess)
             {
-                // Handle error response
                 var error = genericResult.RootElement.GetProperty("Error").Deserialize<RpcError>();
                 var statusCode = GetStatusCode(error?.Kind);
                 return StatusCode(statusCode, new { success = false, errorMessage = error?.Message });
             }
 
-            // Handle success response
             if (genericResult.RootElement.TryGetProperty("Data", out var dataElement))
             {
-                // Return the data if it exists
                 return Ok(dataElement.Deserialize<object>());
             }
-            else if (genericResult.RootElement.TryGetProperty("CreatedId", out var createdIdElement) && 
+            else if (genericResult.RootElement.TryGetProperty("CreatedId", out var createdIdElement) &&
                      !createdIdElement.ValueKind.Equals(JsonValueKind.Null))
             {
-                // Return createdId if it exists and is not null
                 return Ok(new { createdId = createdIdElement.GetInt32() });
             }
-            
-            // Return empty success response
+
             return Ok();
 
         }

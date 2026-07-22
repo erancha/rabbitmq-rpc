@@ -20,7 +20,7 @@ public class UserMessageHandler : BaseMessageHandler
         DbInitializationSignal dbInitializationSignal)
         : base(CurrentQueueName, channelPool.Get(), scopeFactory, logger, dbInitializationSignal) 
     {
-        _instanceId = Guid.NewGuid().ToString("N")[..8]; // Short unique ID
+        _instanceId = Guid.NewGuid().ToString("N")[..8];
     }
 
     protected override async Task<string> ProcessMessage(string messageType, string message)

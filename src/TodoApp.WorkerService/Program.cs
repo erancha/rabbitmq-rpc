@@ -19,12 +19,10 @@ IConnection connection = RabbitMQShared.Connections.ConnectAndBindExchange(rabbi
 var channelPool = RabbitMQChannelPoolFactory.CreateChannelPool(connection);
 builder.Services.AddSingleton<ObjectPool<IModel>>(_ => channelPool);
 
-// Setup queues using a channel from the pool
 var setupChannel = channelPool.Get();
 RabbitMQSetup.DeclareAndBindQueues(setupChannel);
 channelPool.Return(setupChannel);
 
-// Configure Database: Register a factory to create DbContext instances with a scoped lifetime:
 builder.Services.AddDbContext<TodoDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
 );
@@ -39,21 +37,9 @@ builder.Services.AddHostedService<DbInitializationService>();
 builder.Services.AddHostedService<UserMessageHandler>();
 builder.Services.AddHostedService<TodoItemMessageHandler>();
 
-// Build the application - this finalizes service registration and creates the root service provider.
-// After this point, we can no longer register services, and the application can start resolving them.
 var host = builder.Build();
 
-// Register cleanup on application shutdown
 host.Services.GetRequiredService<IHostApplicationLifetime>()
     .ApplicationStopping.Register(() => connection?.Close());
 
-// DI Resolution happens in the following points:
-//   1. When ASP.NET Core resolves services during startup,
-//   2. When controllers are created for each request (resolving their dependencies),
-//   3. When those services themselves resolve dependencies during runtime.
 await host.RunAsync();
-
-// The host:
-//   1. Starts all registered hosted services by calling their StartAsync methods in order
-//   2. Keeps the application running
-//   3. Handles application shutdown (calls StopAsync on all hosted services)

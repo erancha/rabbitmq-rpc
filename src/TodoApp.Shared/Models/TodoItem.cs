@@ -1,11 +1,7 @@
 namespace TodoApp.Shared.Models;
 
-// Notes:
-// - Primary key: Id (integer)
-// - Foreign key: UserId (references User)
-// - Soft delete support: IsDeleted, DeletedAt
-// - Status tracking: IsCompleted, CompletedAt
-// - Timestamps: CreatedAt
+// Deletes are soft: rows are kept with IsDeleted/DeletedAt set, and readers must filter on
+// IsDeleted. The UserId foreign key (cascade delete) is configured in TodoDbContext (Fluent API).
 public class TodoItem
 {
     public int Id { get; set; }

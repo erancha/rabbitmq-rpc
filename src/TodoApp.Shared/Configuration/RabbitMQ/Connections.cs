@@ -36,9 +36,6 @@ public static class Connections
 
         var channel = connection.CreateModel();
 
-        // Declare exchange
-        // Setting durable: true means the exchange will survive a RabbitMQ server restart
-        // The exchange definition is persisted to disk and restored on server startup
         channel.ExchangeDeclare(
             exchange: Config.AppExchangeName,
             type: Config.AppExchangeType,

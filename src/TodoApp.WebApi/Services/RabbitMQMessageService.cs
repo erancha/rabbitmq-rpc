@@ -14,13 +14,8 @@ using RabbitMQShared = TodoApp.Shared.Configuration.RabbitMQ;
 namespace TodoApp.WebApi.Services;
 
 /// <summary>
-/// Provides a centralized service for publishing messages to RabbitMQ queues.
-/// This service eliminates code duplication across controllers and standardizes message publishing.
-/// Key benefits:
-/// - Automatic message type inference from class names
-/// - Single responsibility for RabbitMQ publishing logic
-/// - Consistent message serialization across the application
-/// - Easier testing through dependency injection
+/// Publishes RPC requests to RabbitMQ and correlates worker replies back to the awaiting caller.
+/// The message type sent to the worker is inferred from the message class name.
 /// </summary>
 public interface IRabbitMQMessageService
 {
@@ -37,19 +32,19 @@ public interface IRabbitMQMessageService
 }
 
 /// <summary>
-/// Default implementation of IRabbitMQMessageService that handles message publishing to RabbitMQ.
-/// Design changes needed for single reply queue approach:
-/// 1. Create an instance-specific reply queue at service startup instead of per request
-///    - Queue should be durable and named with instance ID (e.g. "webapi-replies-{instanceId}")
-///    - Better debugging, monitoring and isolation compared to shared queue approach (in which all WebApi instances share one reply queue)
-/// 2. Use correlationId as key in ConcurrentDictionary<string, TaskCompletionSource<string>>
-///    - Add pending requests on publish, remove when the response arrives or the request
-///      times out, so entries for requests the worker will never answer cannot accumulate
-/// 3. Single consumer on reply queue dispatches to correct request using correlationId
-///    - More efficient than creating/destroying consumers per request
-///    - Requires thread-safe response routing via ConcurrentDictionary
-/// 4. Consider implementing consumer reconnection/recovery logic
-///    - Single queue/consumer is a critical path, needs robust error handling
+/// RPC client over RabbitMQ, used by the WebApi to delegate requests to the worker service.
+///
+/// Core design:
+/// - One durable, instance-specific reply queue ("webapi-replies-{instanceId}") declared at
+///   startup, giving each WebApi instance isolated reply traffic for debugging and monitoring
+/// - Pending requests are tracked by correlation ID; entries are added on publish and removed
+///   when the reply arrives or the request times out, so entries for requests the worker will
+///   never answer cannot accumulate
+/// - A single long-lived consumer on the reply queue dispatches each reply to its pending request
+/// - Publishing borrows short-lived channels from the shared channel pool
+///
+/// OPEN — the reply consumer has no reconnection/recovery logic; it is a critical path and stops
+/// receiving replies if its channel or connection drops.
 /// </summary>
 public class RabbitMQMessageService : IRabbitMQMessageService
 {
@@ -71,22 +66,14 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         _config = config.Value;
         _pendingRequests = new ConcurrentDictionary<string, TaskCompletionSource<string>>();
 
-        // Get a dedicated long-lived channel from the pool for the RPC consumer
-        // We don't return this one to the pool - it stays with the service
+        // Taken from the pool but never returned — the consumer needs it for the service lifetime.
         _consumerChannel = _channelPool.Get();
 
-        // Create a durable, named, instance-specific reply queue
-        var instanceId = Environment.MachineName; // Or use another unique identifier
+        var instanceId = Environment.MachineName;
         _replyQueueName = $"webapi-replies-{instanceId}";
 
-        // QueueDeclare options:
-        // - durable: queue and messages survive broker restarts (default=false)
-        // - autoDelete: delete queue when last consumer disconnects (default=false)
-        // - exclusive: only allow access from the declaring connection (default: true)
-        // - arguments: optional settings like TTL, max length (default=null)
         _consumerChannel.QueueDeclare(queue: _replyQueueName, durable: true);
 
-        // Set up consumer for replies: Create a consumer, add an event handler, and register the consumer.
         var consumer = new EventingBasicConsumer(_consumerChannel);
 
         consumer.Received += (model, ea) =>
@@ -99,8 +86,7 @@ public class RabbitMQMessageService : IRabbitMQMessageService
                 correlationId
             );
 
-            // If found in _pendingRequests, complete the task with the response value
-            // This unblocks the waiting PublishMessageRpc call
+            // Completing the TaskCompletionSource unblocks the awaiting PublishMessageRpc call
             if (_pendingRequests.TryRemove(correlationId, out var tcs))
                 tcs.SetResult(response);
             else
@@ -115,23 +101,13 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         _consumerChannel.BasicConsume(consumer: consumer, queue: _replyQueueName, autoAck: true);
     }
 
-    /// <summary>
-    /// Publishes a message to a RabbitMQ queue and waits for a response using the RPC pattern.
-    /// </summary>
-    /// <param name="message">The message to publish</param>
-    /// <param name="routingKey">The queue name to publish to</param>
-    /// <param name="executeIfTimeout">If true, the workers service will execute the request even if client times out. 
-    /// Set to true for state-changing operations that should complete regardless of timeout.</param>
-    /// <returns>The response message</returns>
     public async Task<string> PublishMessageRpc<T>(T message, string routingKey, bool executeIfTimeout = false)
     {
         var correlationId = Guid.NewGuid().ToString();
         var tcs = new TaskCompletionSource<string>();
 
-        // Store the TaskCompletionSource for this request
         _pendingRequests.TryAdd(correlationId, tcs); // Will always succeed as correlationId is a new GUID
 
-        // Get a channel from the pool for publishing
         var publishChannel = _channelPool.Get();
         try
         {
@@ -163,16 +139,10 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         }
         finally
         {
-            // Always return the channel to the pool
             _channelPool.Return(publishChannel);
         }
 
-        // Create timeout task that completes after specified seconds
         var timeoutTask = Task.Delay(TimeSpan.FromSeconds(_config.RpcTimeoutSeconds));
-
-        // Block until either:
-        //   1. Response received (tcs completed by consumer)
-        //   2. Timeout occurs
         var completedTask = await Task.WhenAny(tcs.Task, timeoutTask);
 
         if (completedTask == timeoutTask)

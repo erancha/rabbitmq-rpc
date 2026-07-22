@@ -68,7 +68,6 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
                     return;
                 }
 
-                // Check for timeout first to potentially skip processing
                 if (HasRequestTimedOut(ea, messageType, out var elapsedSeconds, out var timeoutSeconds))
                 {
                     var executeIfTimeout = ea.BasicProperties?.Headers?.TryGetValue(RpcHeaders.ExecuteIfTimeout, out var executeObj) == true
@@ -139,7 +138,7 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
     )
     {
         elapsedSeconds = 0;
-        timeoutSeconds = 30; // Default timeout
+        timeoutSeconds = 30; // Fallback when the request carries no timeout header
 
         if (ea.BasicProperties?.Timestamp == null || ea.BasicProperties?.Headers == null)
             return false;
@@ -243,20 +242,6 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
             _ => ex.Message,
         };
 
-        object? requestData;
-        try
-        {
-            requestData = !string.IsNullOrWhiteSpace(requestMessage)
-                ? JsonSerializer.Deserialize<object>(requestMessage)
-                : null;
-        }
-        catch
-        {
-            requestData = requestMessage;
-        }
-
-        // Suffix the error message with the serialized errorMessageObj (request context)
-        var errorMessageObj = new { Error = message, Request = requestData };
         var response = new RpcResponse<object>
         {
             Success = false,
