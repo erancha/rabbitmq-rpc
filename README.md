@@ -1,6 +1,6 @@
 # Todo Application
 
-A backend-only (starter) Todo application with separate Web API and Worker services, using RabbitMQ for communication and PostgreSQL for data storage.
+A backend-only (starter) Todo application with separate Web API and Worker services, using RabbitMQ for communication and PostgreSQL (via EF Core) for data storage.
 
 RabbitMQ carries request-response (RPC) traffic rather than fire-and-forget messages — the REST caller expects the created entity in the HTTP response, so the Web API blocks on the Worker Service's reply — which buys decoupling and durability without making the API asynchronous.
 
