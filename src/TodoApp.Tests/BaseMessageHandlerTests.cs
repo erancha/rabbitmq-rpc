@@ -1,0 +1,239 @@
+using Xunit;
+using System.Text;
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using Npgsql;
+using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
+using TodoApp.Shared.Messages;
+using TodoApp.WorkerService.Services;
+
+namespace TodoApp.Tests;
+
+/// <summary>
+/// Verifies the worker-side message pipeline: exception-to-error-kind mapping in RPC error
+/// responses, the timed-out-request skip branch, and ack/nack plus reply publication behavior.
+/// </summary>
+public class BaseMessageHandlerTests
+{
+    /// <summary>
+    /// Minimal concrete handler exposing the protected error-response factory and delegating
+    /// message processing to a test-supplied callback.
+    /// </summary>
+    private sealed class TestableHandler : BaseMessageHandler
+    {
+        public List<(string MessageType, string Message)> Processed { get; } = new();
+        public Func<string, string, Task<string>> OnProcess { get; set; } =
+            (_, _) => Task.FromResult("{\"Success\":true}");
+
+        public TestableHandler(IModel channel, DbInitializationSignal signal)
+            : base("test-queue", channel, new Mock<IServiceScopeFactory>().Object,
+                NullLogger.Instance, signal)
+        { }
+
+        protected override Task<string> ProcessMessage(string messageType, string message)
+        {
+            Processed.Add((messageType, message));
+            return OnProcess(messageType, message);
+        }
+
+        public string InvokeCreateErrorResponse(Exception ex) => CreateErrorResponse(ex);
+    }
+
+    private static RpcError ErrorOf(string responseJson)
+    {
+        var response = JsonSerializer.Deserialize<RpcResponse>(responseJson)!;
+        Assert.False(response.Success);
+        return response.Error!;
+    }
+
+    private static TestableHandler CreateHandler(Mock<IModel> channel)
+    {
+        var signal = new DbInitializationSignal();
+        signal.MarkAsComplete();
+        return new TestableHandler(channel.Object, signal);
+    }
+
+    #region Error-kind mapping
+
+    [Fact]
+    public void KeyNotFoundException_maps_to_NOT_FOUND()
+    {
+        var handler = CreateHandler(new Mock<IModel>());
+        var error = ErrorOf(handler.InvokeCreateErrorResponse(new KeyNotFoundException("user 7 missing")));
+        Assert.Equal(RpcErrorKind.NOT_FOUND, error.Kind);
+        Assert.Equal("user 7 missing", error.Message);
+    }
+
+    [Fact]
+    public void InvalidOperationException_maps_to_VALIDATION()
+    {
+        var handler = CreateHandler(new Mock<IModel>());
+        var error = ErrorOf(handler.InvokeCreateErrorResponse(new InvalidOperationException("bad input")));
+        Assert.Equal(RpcErrorKind.VALIDATION, error.Kind);
+    }
+
+    [Theory]
+    [InlineData("23505")] // unique constraint violation
+    [InlineData("23503")] // foreign key violation
+    public void Postgres_constraint_violation_maps_to_VALIDATION_with_pg_message(string sqlState)
+    {
+        var handler = CreateHandler(new Mock<IModel>());
+        var pgException = new PostgresException("duplicate key", "ERROR", "ERROR", sqlState);
+        var error = ErrorOf(handler.InvokeCreateErrorResponse(new DbUpdateException("wrapper", pgException)));
+        Assert.Equal(RpcErrorKind.VALIDATION, error.Kind);
+        Assert.Equal("duplicate key", error.Message);
+    }
+
+    [Fact]
+    public void Postgres_error_with_other_sql_state_maps_to_FATAL()
+    {
+        var handler = CreateHandler(new Mock<IModel>());
+        var pgException = new PostgresException("relation missing", "ERROR", "ERROR", "42P01");
+        var error = ErrorOf(handler.InvokeCreateErrorResponse(new DbUpdateException("wrapper", pgException)));
+        Assert.Equal(RpcErrorKind.FATAL, error.Kind);
+        Assert.Equal("relation missing", error.Message);
+    }
+
+    [Fact]
+    public void Unrecognized_exception_maps_to_FATAL()
+    {
+        var handler = CreateHandler(new Mock<IModel>());
+        var error = ErrorOf(handler.InvokeCreateErrorResponse(new ArgumentException("boom")));
+        Assert.Equal(RpcErrorKind.FATAL, error.Kind);
+    }
+
+    #endregion
+
+    #region Consumer pipeline
+
+    /// <summary>
+    /// Starts a handler against a mocked channel and returns the captured consumer plus the
+    /// list of replies the handler publishes.
+    /// </summary>
+    private sealed class ConsumerHarness
+    {
+        public Mock<IModel> Channel { get; } = new();
+        public TestableHandler Handler { get; }
+        public EventingBasicConsumer Consumer { get; private set; } = null!;
+        public List<(string Exchange, string RoutingKey, IBasicProperties Props, byte[] Body)> Published { get; } = new();
+
+        public ConsumerHarness()
+        {
+            Channel
+                .Setup(c => c.BasicConsume(
+                    It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<string>(), It.IsAny<bool>(),
+                    It.IsAny<bool>(), It.IsAny<IDictionary<string, object>>(), It.IsAny<IBasicConsumer>()))
+                .Callback((string queue, bool autoAck, string tag, bool noLocal, bool exclusive,
+                    IDictionary<string, object> args, IBasicConsumer consumer) =>
+                    Consumer = (EventingBasicConsumer)consumer)
+                .Returns("consumer-tag");
+
+            Channel.Setup(c => c.CreateBasicProperties()).Returns(() =>
+            {
+                var props = new Mock<IBasicProperties>();
+                props.SetupAllProperties();
+                return props.Object;
+            });
+
+            Channel
+                .Setup(c => c.BasicPublish(
+                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(),
+                    It.IsAny<IBasicProperties>(), It.IsAny<ReadOnlyMemory<byte>>()))
+                .Callback((string exchange, string routingKey, bool mandatory,
+                    IBasicProperties props, ReadOnlyMemory<byte> body) =>
+                    Published.Add((exchange, routingKey, props, body.ToArray())));
+
+            Handler = CreateHandler(Channel);
+        }
+
+        public static async Task<ConsumerHarness> CreateStartedAsync()
+        {
+            var harness = new ConsumerHarness();
+            await harness.Handler.StartAsync(CancellationToken.None);
+            return harness;
+        }
+
+        public void Deliver(long ageSeconds, int timeoutSeconds, bool? executeIfTimeout, ulong deliveryTag = 7)
+        {
+            var props = new Mock<IBasicProperties>();
+            props.SetupAllProperties();
+            props.Object.Type = "PingMessage";
+            props.Object.CorrelationId = "corr-1";
+            props.Object.ReplyTo = "reply-queue";
+            props.Object.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ageSeconds);
+            var headers = new Dictionary<string, object> { { RpcHeaders.TimeoutSeconds, timeoutSeconds } };
+            if (executeIfTimeout.HasValue)
+                headers.Add(RpcHeaders.ExecuteIfTimeout, executeIfTimeout.Value);
+            props.Object.Headers = headers;
+
+            Consumer.HandleBasicDeliver(
+                "consumer-tag", deliveryTag, false, "", "test-queue",
+                props.Object, Encoding.UTF8.GetBytes("{\"Name\":\"a\"}"));
+        }
+    }
+
+    [Fact]
+    public async Task Timed_out_request_is_acked_and_skipped()
+    {
+        var harness = await ConsumerHarness.CreateStartedAsync();
+
+        harness.Deliver(ageSeconds: 100, timeoutSeconds: 5, executeIfTimeout: false);
+
+        Assert.Empty(harness.Handler.Processed);
+        Assert.Empty(harness.Published);
+        harness.Channel.Verify(c => c.BasicAck(7, false), Times.Once);
+    }
+
+    [Fact]
+    public async Task Timed_out_request_with_executeIfTimeout_is_processed_but_reply_suppressed()
+    {
+        var harness = await ConsumerHarness.CreateStartedAsync();
+
+        harness.Deliver(ageSeconds: 100, timeoutSeconds: 5, executeIfTimeout: true);
+
+        Assert.Single(harness.Handler.Processed);
+        Assert.Empty(harness.Published);
+        harness.Channel.Verify(c => c.BasicAck(7, false), Times.Once);
+    }
+
+    [Fact]
+    public async Task Fresh_request_is_processed_and_reply_routed_to_reply_queue_with_correlation_id()
+    {
+        var harness = await ConsumerHarness.CreateStartedAsync();
+        harness.Handler.OnProcess = (_, _) => Task.FromResult("{\"Success\":true}");
+
+        harness.Deliver(ageSeconds: 0, timeoutSeconds: 30, executeIfTimeout: false);
+
+        Assert.Single(harness.Handler.Processed);
+        Assert.Equal("PingMessage", harness.Handler.Processed[0].MessageType);
+        harness.Channel.Verify(c => c.BasicAck(7, false), Times.Once);
+
+        var (exchange, routingKey, props, body) = Assert.Single(harness.Published);
+        Assert.Equal("", exchange);
+        Assert.Equal("reply-queue", routingKey);
+        Assert.Equal("corr-1", props.CorrelationId);
+        Assert.Equal("{\"Success\":true}", Encoding.UTF8.GetString(body));
+    }
+
+    [Fact]
+    public async Task Failing_request_is_nacked_and_error_reply_sent()
+    {
+        var harness = await ConsumerHarness.CreateStartedAsync();
+        harness.Handler.OnProcess = (_, _) => throw new KeyNotFoundException("no such user");
+
+        harness.Deliver(ageSeconds: 0, timeoutSeconds: 30, executeIfTimeout: false);
+
+        harness.Channel.Verify(c => c.BasicNack(7, false, false), Times.Once);
+        var (_, routingKey, _, body) = Assert.Single(harness.Published);
+        Assert.Equal("reply-queue", routingKey);
+        var error = ErrorOf(Encoding.UTF8.GetString(body));
+        Assert.Equal(RpcErrorKind.NOT_FOUND, error.Kind);
+        Assert.Equal("no such user", error.Message);
+    }
+
+    #endregion
+}
