@@ -2,6 +2,7 @@ bin/
 obj/
 .config/dotnet-tools.json
 deploy/aws/
+deploy/docker-compose.yml
 jmeter/*.jtl
 jmeter/jmeter.log
 jmeter/replica-sweep/
