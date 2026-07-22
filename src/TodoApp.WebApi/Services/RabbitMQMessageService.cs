@@ -143,8 +143,8 @@ public class RabbitMQMessageService : IRabbitMQMessageService
             properties.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             properties.Headers = new Dictionary<string, object>
             {
-                { "timeout_seconds", _config.RpcTimeoutSeconds },
-                { "execute_if_timeout", executeIfTimeout }
+                { RpcHeaders.TimeoutSeconds, _config.RpcTimeoutSeconds },
+                { RpcHeaders.ExecuteIfTimeout, executeIfTimeout }
             };
 
             var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message));
@@ -189,7 +189,7 @@ public class RabbitMQMessageService : IRabbitMQMessageService
                     Success = false,
                     Error = new RpcError
                     {
-                        Kind = "TEMPORARY_UNAVAILABLE",
+                        Kind = RpcErrorKind.TEMPORARY_UNAVAILABLE,
                         Message = $"Service is temporarily unavailable (timeout: {_config.RpcTimeoutSeconds}s)." + (executeIfTimeout ? " Your request is queued and will be processed when the system recovers" : string.Empty),
                     },
                 }

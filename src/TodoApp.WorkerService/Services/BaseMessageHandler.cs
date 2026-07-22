@@ -6,7 +6,6 @@ using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using TodoApp.Shared.Messages;
 using TodoApp.WorkerService.Data;
-using static TodoApp.Shared.Messages.RpcErrorKind;
 
 namespace TodoApp.WorkerService.Services;
 
@@ -72,7 +71,7 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
                 // Check for timeout first to potentially skip processing
                 if (HasRequestTimedOut(ea, messageType, out var elapsedSeconds, out var timeoutSeconds))
                 {
-                    var executeIfTimeout = ea.BasicProperties?.Headers?.TryGetValue("execute_if_timeout", out var executeObj) == true
+                    var executeIfTimeout = ea.BasicProperties?.Headers?.TryGetValue(RpcHeaders.ExecuteIfTimeout, out var executeObj) == true
                         && Convert.ToBoolean(executeObj);
 
                     if (!executeIfTimeout)
@@ -146,7 +145,7 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
             return false;
 
         var requestTimestamp = ea.BasicProperties.Timestamp.UnixTime;
-        timeoutSeconds = ea.BasicProperties.Headers.TryGetValue("timeout_seconds", out var timeoutObj)
+        timeoutSeconds = ea.BasicProperties.Headers.TryGetValue(RpcHeaders.TimeoutSeconds, out var timeoutObj)
             ? Convert.ToInt32(timeoutObj)
             : timeoutSeconds;
 
@@ -201,7 +200,7 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
         return json;
     }
 
-    protected string CreateErrorResponse<T>(string message, string kind = "UNKNOWN")
+    protected string CreateErrorResponse<T>(string message, string kind = RpcErrorKind.UNKNOWN)
     {
         var response = new RpcResponse<T>
         {
@@ -228,13 +227,13 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
     {
         var kind = ex switch
         {
-            KeyNotFoundException => RpcErrorKind.NOT_FOUND.ToString(),
-            InvalidOperationException => RpcErrorKind.VALIDATION.ToString(),
+            KeyNotFoundException => RpcErrorKind.NOT_FOUND,
+            InvalidOperationException => RpcErrorKind.VALIDATION,
             DbUpdateException dbEx
                 when dbEx.InnerException is PostgresException pgEx
                     && (pgEx.SqlState == "23505" || pgEx.SqlState == "23503") =>
-                RpcErrorKind.VALIDATION.ToString(),
-            _ => "FATAL",
+                RpcErrorKind.VALIDATION,
+            _ => RpcErrorKind.FATAL,
         };
 
         var message = ex switch

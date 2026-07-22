@@ -20,7 +20,8 @@ public abstract class BaseApiController : ControllerBase
     /// Handles RPC responses by converting them to appropriate HTTP responses.
     /// For success responses:
     /// For error responses:
-    /// 1. Maps RPC error kinds to HTTP status codes (404 for NOT_FOUND, 400 for VALIDATION, 500 for others)
+    /// 1. Maps RPC error kinds to HTTP status codes (404 for NOT_FOUND, 400 for VALIDATION,
+    ///    503 for TEMPORARY_UNAVAILABLE, 500 for others)
     /// 2. Creates a standardized error response that excludes internal error kinds
     /// </summary>
     /// <param name="result">The RPC response to handle</param>
@@ -73,9 +74,9 @@ public abstract class BaseApiController : ControllerBase
     protected static int GetStatusCode(string? kind) =>
         kind switch
         {
-            "NOT_FOUND" => StatusCodes.Status404NotFound,
-            "VALIDATION" => StatusCodes.Status400BadRequest,
-            "TEMPORARY_UNAVAILABLE" => StatusCodes.Status503ServiceUnavailable,
+            RpcErrorKind.NOT_FOUND => StatusCodes.Status404NotFound,
+            RpcErrorKind.VALIDATION => StatusCodes.Status400BadRequest,
+            RpcErrorKind.TEMPORARY_UNAVAILABLE => StatusCodes.Status503ServiceUnavailable,
             _ => StatusCodes.Status500InternalServerError,
         };
 
