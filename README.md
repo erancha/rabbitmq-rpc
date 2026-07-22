@@ -29,39 +29,43 @@ To start the application:
 
 ```bash
 # Start the application (WSL/Linux)
-./scripts/start-todo-app.sh
+./scripts/start.sh
 ```
 
 The following services will be available:
 
 - WebAPI service ([http://localhost:5000](http://localhost:5000))
-- Worker service
+- Worker service(s)
 - RabbitMQ (available on localhost:**5672**) and Management UI ([http://localhost:15672](http://localhost:15672))
 - PostgreSQL (database name: **tododb**), reachable only from the compose network. To open a shell
   against it: `docker compose -p todo-app exec postgres psql -U postgres -d tododb`
 
 ### Load testing
 
-With the application running, drive load against it using the JMeter test plans in `jmeter/`. This
-needs `jmeter` on your PATH.
+With the application running, drive load against it using the JMeter test plans in `jmeter/`. If
+`jmeter` is not on your PATH, the helper downloads and installs it locally (only Java is required).
 
 ```bash
 # Minimal: 2 threads * 5 loops = 10 requests (the default)
 ./scripts/jmeter-helper.sh
 
-# Long: 200 threads * 500 loops = 100,000 requests
-./scripts/jmeter-helper.sh long
+# Long: 200 threads * 250 loops = 50,000 requests
+./scripts/jmeter-helper.sh --long
 ```
 
-Results land in `jmeter/results-<mode>.jtl`. See
+By default only JMeter's console summary is printed; pass `--jtl` to also write per-request
+results to `jmeter/results-<mode>.jtl`. See
 [deploy/README.md](deploy/README.md#jmeter-load-testing) for what each plan exercises and what to
 expect in the database.
 
 To stop the application:
 
 ```bash
-docker compose -p todo-app down
+./scripts/docker-helper.sh --stop
 
 # Optional: also remove volumes (will delete local postgres data)
-docker compose -p todo-app down -v
+./scripts/docker-helper.sh --stop --volumes
 ```
+
+`docker-helper.sh` also tails the stack's logs (`--logs`, with severity and service filters) and
+shows container status (`--ps`); see `./scripts/docker-helper.sh --help`.
