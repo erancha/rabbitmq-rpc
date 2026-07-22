@@ -1,6 +1,7 @@
 using Xunit;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.ObjectPool;
 using Microsoft.Extensions.Options;
@@ -23,6 +24,23 @@ public class RabbitMQMessageServiceTests
     private sealed record PingMessage(string Name);
 
     /// <summary>
+    /// Records every log entry as "Level:message" so tests can assert on the service's
+    /// logging contract, the only externally observable signal for reply routing decisions.
+    /// </summary>
+    private sealed class CapturingLogger : ILogger<RabbitMQMessageService>
+    {
+        public List<string> Messages { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state,
+            Exception? exception, Func<TState, Exception?, string> formatter)
+            => Messages.Add($"{logLevel}:{formatter(state, exception)}");
+    }
+
+    /// <summary>
     /// Builds a RabbitMQMessageService on top of a mocked channel pool, capturing the reply
     /// consumer the service registers and every message it publishes.
     /// </summary>
@@ -32,7 +50,7 @@ public class RabbitMQMessageServiceTests
         public EventingBasicConsumer ReplyConsumer { get; private set; } = null!;
         public List<(string Exchange, string RoutingKey, IBasicProperties Props, byte[] Body)> Published { get; } = new();
 
-        public Harness(int rpcTimeoutSeconds)
+        public Harness(int rpcTimeoutSeconds, ILogger<RabbitMQMessageService>? logger = null)
         {
             var channel = new Mock<IModel>();
 
@@ -65,7 +83,7 @@ public class RabbitMQMessageServiceTests
 
             Service = new RabbitMQMessageService(
                 pool.Object,
-                NullLogger<RabbitMQMessageService>.Instance,
+                logger ?? NullLogger<RabbitMQMessageService>.Instance,
                 Options.Create(new WebApiConfig { RpcTimeoutSeconds = rpcTimeoutSeconds }));
         }
 
@@ -151,6 +169,25 @@ public class RabbitMQMessageServiceTests
         Assert.False(response!.Success);
         Assert.Equal(RpcErrorKind.TEMPORARY_UNAVAILABLE, response.Error!.Kind);
         Assert.Contains("queued", response.Error.Message);
+    }
+
+    [Fact]
+    public async Task Timed_out_request_is_removed_so_a_late_reply_is_treated_as_unknown()
+    {
+        var logger = new CapturingLogger();
+        var harness = new Harness(rpcTimeoutSeconds: 1, logger);
+
+        await harness.Service.PublishMessageRpc(new PingMessage("a"), "some-queue");
+        var correlationId = harness.Published.Single().Props.CorrelationId;
+
+        // A leaked pending-request entry would route this late reply to the timed-out
+        // request's TaskCompletionSource instead of the unknown-correlation-ID path.
+        harness.DeliverReply(correlationId, "{\"Success\":true}");
+
+        Assert.Contains(logger.Messages, m =>
+            m.StartsWith($"{LogLevel.Warning}:") &&
+            m.Contains("unknown correlation ID") &&
+            m.Contains(correlationId));
     }
 
     [Fact]

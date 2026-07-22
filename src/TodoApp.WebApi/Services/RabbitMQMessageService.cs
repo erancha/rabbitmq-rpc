@@ -43,8 +43,8 @@ public interface IRabbitMQMessageService
 ///    - Queue should be durable and named with instance ID (e.g. "webapi-replies-{instanceId}")
 ///    - Better debugging, monitoring and isolation compared to shared queue approach (in which all WebApi instances share one reply queue)
 /// 2. Use correlationId as key in ConcurrentDictionary<string, TaskCompletionSource<string>>
-///    - Add pending requests on publish, remove when response received
-///    - Clean up expired requests periodically to prevent memory leaks
+///    - Add pending requests on publish, remove when the response arrives or the request
+///      times out, so entries for requests the worker will never answer cannot accumulate
 /// 3. Single consumer on reply queue dispatches to correct request using correlationId
 ///    - More efficient than creating/destroying consumers per request
 ///    - Requires thread-safe response routing via ConcurrentDictionary
@@ -177,6 +177,10 @@ public class RabbitMQMessageService : IRabbitMQMessageService
 
         if (completedTask == timeoutTask)
         {
+            // Drop the pending entry: the worker never replies to timed-out requests, so a
+            // leftover entry would stay in the dictionary forever.
+            _pendingRequests.TryRemove(correlationId, out _);
+
             _logger.LogWarning(
                 "Request with correlation ID {CorrelationId} timed out after {TimeoutSeconds} seconds",
                 correlationId,
