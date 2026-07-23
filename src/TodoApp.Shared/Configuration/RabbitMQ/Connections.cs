@@ -19,7 +19,6 @@ public static class Connections
             try
             {
                 connection = connectionFactory.CreateConnection();
-                Console.WriteLine($"Successfully connected to RabbitMQ on attempt {retry}");
                 break;
             }
             catch (Exception)
@@ -34,13 +33,15 @@ public static class Connections
         if (connection is null)
             throw new InvalidOperationException("Failed to establish RabbitMQ connection");
 
-        var channel = connection.CreateModel();
-
-        channel.ExchangeDeclare(
-            exchange: Config.AppExchangeName,
-            type: Config.AppExchangeType,
-            durable: true
-        );
+        // Short-lived channel used only to declare the exchange.
+        using (var channel = connection.CreateModel())
+        {
+            channel.ExchangeDeclare(
+                exchange: Config.AppExchangeName,
+                type: Config.AppExchangeType,
+                durable: true
+            );
+        }
 
         return connection;
     }

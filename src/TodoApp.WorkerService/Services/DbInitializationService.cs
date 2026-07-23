@@ -4,11 +4,14 @@ using TodoApp.WorkerService.Data;
 namespace TodoApp.WorkerService.Services;
 
 /// <summary>
-/// Hosted service that connects to the database with retries, runs pending EF migrations, and
-/// then marks DbInitializationSignal complete so the message handlers can start consuming.
+/// Hosted service that probes database reachability with exponential backoff — failing startup
+/// if the database never becomes reachable — then runs pending EF migrations and marks
+/// DbInitializationSignal complete so the message handlers can start consuming.
 /// </summary>
 public class DbInitializationService : IHostedService
 {
+    private const int MaxConnectionAttempts = 5;
+
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<DbInitializationService> _logger;
     private readonly DbInitializationSignal _dbInitializationSignal;
@@ -31,30 +34,39 @@ public class DbInitializationService : IHostedService
             var dbContext = scope.ServiceProvider.GetRequiredService<TodoDbContext>();
 
             _logger.LogInformation("Checking database connection...");
-            for (int retry = 1; retry <= 5; retry++)
+            var connected = false;
+            for (int retry = 1; retry <= MaxConnectionAttempts && !connected; retry++)
             {
+                // An exception on the final attempt propagates as-is; a false result on the
+                // final attempt is turned into the failure below.
+                Exception? probeFailure = null;
                 try
                 {
-                    if (await dbContext.Database.CanConnectAsync(cancellationToken))
-                    {
-                        _logger.LogInformation(
-                            $"Database connection successful on attempt {retry}"
-                        );
-                        break;
-                    }
+                    connected = await dbContext.Database.CanConnectAsync(cancellationToken);
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (retry < MaxConnectionAttempts)
                 {
-                    if (retry == 5)
-                        throw;
-                    var delay = TimeSpan.FromSeconds(Math.Pow(2, retry - 1)); // 1, 2, 4, 8, 16 seconds
+                    probeFailure = ex;
+                }
+
+                if (!connected && retry < MaxConnectionAttempts)
+                {
+                    var delay = TimeSpan.FromSeconds(Math.Pow(2, retry - 1)); // 1, 2, 4, 8 seconds
                     _logger.LogWarning(
-                        ex,
-                        $"Failed to connect to database on attempt {retry}/5. Retrying in {delay.TotalSeconds} seconds..."
+                        probeFailure,
+                        "Database not reachable on attempt {Retry}/{MaxAttempts}. Retrying in {DelaySeconds} seconds...",
+                        retry, MaxConnectionAttempts, delay.TotalSeconds
                     );
-                    await Task.Delay(delay, cancellationToken);
+                    await DelayAsync(delay, cancellationToken);
                 }
             }
+
+            if (!connected)
+                throw new InvalidOperationException(
+                    $"Database is unreachable after {MaxConnectionAttempts} connection attempts"
+                );
+
+            _logger.LogInformation("Database connection successful");
 
             _logger.LogInformation("Starting database migration...");
             var pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync(
@@ -91,6 +103,13 @@ public class DbInitializationService : IHostedService
             throw;
         }
     }
+
+    /// <summary>
+    /// Waits between connection attempts. Overridable so tests can assert the backoff schedule
+    /// without real waiting.
+    /// </summary>
+    protected virtual Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken) =>
+        Task.Delay(delay, cancellationToken);
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
