@@ -121,8 +121,19 @@ public class BaseMessageHandlerTests
         public EventingBasicConsumer Consumer { get; private set; } = null!;
         public List<(string Exchange, string RoutingKey, IBasicProperties Props, byte[] Body)> Published { get; } = new();
 
+        // Channel operations ("ack" / "nack" / "publish") in invocation order, for settlement-order assertions.
+        public List<string> Calls { get; } = new();
+
         public ConsumerHarness()
         {
+            Channel
+                .Setup(c => c.BasicAck(It.IsAny<ulong>(), It.IsAny<bool>()))
+                .Callback(() => Calls.Add("ack"));
+
+            Channel
+                .Setup(c => c.BasicNack(It.IsAny<ulong>(), It.IsAny<bool>(), It.IsAny<bool>()))
+                .Callback(() => Calls.Add("nack"));
+
             Channel
                 .Setup(c => c.BasicConsume(
                     It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<string>(), It.IsAny<bool>(),
@@ -145,7 +156,10 @@ public class BaseMessageHandlerTests
                     It.IsAny<IBasicProperties>(), It.IsAny<ReadOnlyMemory<byte>>()))
                 .Callback((string exchange, string routingKey, bool mandatory,
                     IBasicProperties props, ReadOnlyMemory<byte> body) =>
-                    Published.Add((exchange, routingKey, props, body.ToArray())));
+                {
+                    Calls.Add("publish");
+                    Published.Add((exchange, routingKey, props, body.ToArray()));
+                });
 
             Handler = CreateHandler(Channel);
         }
@@ -220,7 +234,7 @@ public class BaseMessageHandlerTests
     }
 
     [Fact]
-    public async Task Failing_request_is_nacked_and_error_reply_sent()
+    public async Task Failing_request_is_nacked_before_the_error_reply_is_published()
     {
         var harness = await ConsumerHarness.CreateStartedAsync();
         harness.Handler.OnProcess = (_, _) => throw new KeyNotFoundException("no such user");
@@ -233,6 +247,37 @@ public class BaseMessageHandlerTests
         var error = ErrorOf(Encoding.UTF8.GetString(body));
         Assert.Equal(RpcErrorKind.NOT_FOUND, error.Kind);
         Assert.Equal("no such user", error.Message);
+
+        // Nack must precede the reply publish: if the reply publish fails, the message is
+        // already dead-lettered rather than left unsettled.
+        Assert.Equal(new[] { "nack", "publish" }, harness.Calls);
+    }
+
+    [Fact]
+    public async Task Reply_failure_after_successful_processing_does_not_nack_the_acked_delivery()
+    {
+        var harness = await ConsumerHarness.CreateStartedAsync();
+        // Only the success-reply publish fails; a later error-reply publish would succeed and
+        // must still not lead to a nack of the already-acked delivery.
+        var publishAttempts = 0;
+        harness.Channel
+            .Setup(c => c.BasicPublish(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(),
+                It.IsAny<IBasicProperties>(), It.IsAny<ReadOnlyMemory<byte>>()))
+            .Callback(() =>
+            {
+                if (++publishAttempts == 1)
+                    throw new InvalidOperationException("publish failed");
+            });
+
+        harness.Deliver(ageSeconds: 0, timeoutSeconds: 30, executeIfTimeout: false);
+
+        Assert.Single(harness.Handler.Processed);
+        harness.Channel.Verify(c => c.BasicAck(7, false), Times.Once);
+        // Nacking an already-acked delivery tag is a channel-level protocol error that would
+        // close the channel; the delivery is settled and the client simply times out.
+        harness.Channel.Verify(
+            c => c.BasicNack(It.IsAny<ulong>(), It.IsAny<bool>(), It.IsAny<bool>()), Times.Never);
     }
 
     #endregion

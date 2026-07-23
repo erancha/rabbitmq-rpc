@@ -49,8 +49,9 @@ This application uses RabbitMQ's Direct Exchange with RPC (Remote Procedure Call
 
 ### Error Handling & Reliability
 
-- Message persistence ensures durability across broker restarts (WebApi's [Program.cs](../src/TodoApp.WebApi/Program.cs) and WorkerService's [Program.cs](../src/TodoApp.WorkerService/Program.cs): `durable: true` in exchange and queue declarations)
-- Error handling with message acknowledgment ([UserMessageHandler.cs](../src/TodoApp.WorkerService/Services/UserMessageHandler.cs) and [TodoItemMessageHandler.cs](../src/TodoApp.WorkerService/Services/TodoItemMessageHandler.cs))
+- Durable exchange/queue declarations plus persistent request publishing (`properties.Persistent` in [RabbitMQMessageService.cs](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs)) preserve queued requests across broker restarts
+- Requests that fail processing are rejected without requeue and routed through a dead-letter exchange to a durable `dead-letter-queue` ([RabbitMQSetup.cs](../src/TodoApp.WorkerService/Helpers/RabbitMQSetup.cs)) for inspection and replay, instead of being discarded by the broker
+- Error handling with message acknowledgment ([BaseMessageHandler.cs](../src/TodoApp.WorkerService/Services/BaseMessageHandler.cs)): each delivery is settled exactly once — acked after successful processing, nacked to the dead-letter queue on failure — before the RPC reply is published
 - Connection retries with exponential backoff at startup ([Connections.cs](../src/TodoApp.Shared/Configuration/RabbitMQ/Connections.cs)). OPEN — an established connection or the reply consumer's channel is not automatically recovered if it drops later.
 - Timeout handling for RPC calls ([RabbitMQMessageService.cs](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs): configurable via `WebApi__RpcTimeoutSeconds`, 10 seconds by default)
 

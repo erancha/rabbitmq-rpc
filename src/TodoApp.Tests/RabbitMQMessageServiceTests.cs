@@ -169,6 +169,10 @@ public class RabbitMQMessageServiceTests
         Assert.False(response!.Success);
         Assert.Equal(RpcErrorKind.TEMPORARY_UNAVAILABLE, response.Error!.Kind);
         Assert.Contains("queued", response.Error.Message);
+        // The system guarantees retention (durable queue, persistent message, dead-letter
+        // routing on failure) — not eventual processing, so the message must not promise it.
+        Assert.Contains("will not be lost", response.Error.Message);
+        Assert.DoesNotContain("will be processed", response.Error.Message);
     }
 
     [Fact]
@@ -205,6 +209,8 @@ public class RabbitMQMessageServiceTests
         Assert.Equal(nameof(PingMessage), props.Type);
         Assert.Equal(30, props.Headers[RpcHeaders.TimeoutSeconds]);
         Assert.True((bool)props.Headers[RpcHeaders.ExecuteIfTimeout]);
+        // Durable queues alone do not preserve non-persistent messages across a broker restart.
+        Assert.True(props.Persistent);
 
         harness.DeliverReply(props.CorrelationId, "{}");
         await task;

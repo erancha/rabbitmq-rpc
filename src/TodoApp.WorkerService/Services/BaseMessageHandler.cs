@@ -57,6 +57,7 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
             }
 
             string? message = null;
+            var acked = false;
             try
             {
                 var messageType = ea.BasicProperties?.Type;
@@ -90,6 +91,7 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
                 // TODO: so that retries/redeliveries do not cause duplicate writes/side-effects.
                 var rpcResponse = await ProcessMessage(messageType, message);
                 _channel.BasicAck(ea.DeliveryTag, multiple: false);
+                acked = true;
 
                 if (!HasRequestTimedOut(ea, messageType, out _, out _))
                     SendRpcResponse(ea, rpcResponse);
@@ -97,10 +99,19 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing message: {Message}", message);
-                string unescapedMessage = !string.IsNullOrWhiteSpace(message) ? UnescapeJsonMessage(message) : string.Empty;
-                var rpcResponse = CreateErrorResponse(ex, unescapedMessage);
-                SendRpcResponse(ea, rpcResponse);
+
+                // Each delivery is settled exactly once. Re-settling an acked tag is a
+                // channel-level protocol error that closes the channel, so a failed reply
+                // publish after the ack is only logged — the client observes a timeout.
+                if (acked)
+                    return;
+
+                // Nack before publishing the error reply: the queue's dead-letter exchange
+                // retains the message even if the reply publish fails.
                 _channel.BasicNack(ea.DeliveryTag, false, false);
+
+                string unescapedMessage = !string.IsNullOrWhiteSpace(message) ? UnescapeJsonMessage(message) : string.Empty;
+                SendRpcResponse(ea, CreateErrorResponse(ex, unescapedMessage));
             }
         };
 

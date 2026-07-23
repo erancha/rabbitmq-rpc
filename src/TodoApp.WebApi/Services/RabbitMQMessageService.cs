@@ -115,6 +115,8 @@ public class RabbitMQMessageService : IRabbitMQMessageService
             properties.CorrelationId = correlationId;
             properties.ReplyTo = _replyQueueName;
             properties.Type = typeof(T).Name;
+            // Durable queues alone do not preserve non-persistent messages across a broker restart.
+            properties.Persistent = true;
 
             properties.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             properties.Headers = new Dictionary<string, object>
@@ -164,7 +166,10 @@ public class RabbitMQMessageService : IRabbitMQMessageService
                     Error = new RpcError
                     {
                         Kind = RpcErrorKind.TEMPORARY_UNAVAILABLE,
-                        Message = $"Service is temporarily unavailable (timeout: {_config.RpcTimeoutSeconds}s)." + (executeIfTimeout ? " Your request is queued and will be processed when the system recovers" : string.Empty),
+                        // Promises only what the broker guarantees: retention (durable queue,
+                        // persistent message, dead-letter routing on failure) — not eventual
+                        // processing.
+                        Message = $"Service is temporarily unavailable (timeout: {_config.RpcTimeoutSeconds}s)." + (executeIfTimeout ? " Your request remains queued and will not be lost." : string.Empty),
                     },
                 }
             );
