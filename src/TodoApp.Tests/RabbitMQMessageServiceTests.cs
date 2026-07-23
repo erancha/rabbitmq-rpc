@@ -144,6 +144,36 @@ public class RabbitMQMessageServiceTests
     }
 
     [Fact]
+    public async Task Reply_delivery_does_not_run_awaiter_continuations_on_the_consumer_thread()
+    {
+        var harness = new Harness(rpcTimeoutSeconds: 30);
+
+        // Started without a SynchronizationContext so the service's internal awaits resume
+        // inline on the completing thread, as they do under ASP.NET Core. xunit's test-thread
+        // context would otherwise post them elsewhere and mask inlining.
+        Task<string> task = null!;
+        var startThread = new Thread(() =>
+            task = harness.Service.PublishMessageRpc(new PingMessage("a"), "some-queue"));
+        startThread.Start();
+        startThread.Join();
+        var correlationId = harness.Published.Single().Props.CorrelationId;
+
+        Thread? continuationThread = null;
+        var continuation = task.ContinueWith(
+            _ => continuationThread = Thread.CurrentThread,
+            TaskContinuationOptions.ExecuteSynchronously);
+
+        // A synchronous continuation runs inline on whatever thread completes the task, so it
+        // lands on this thread unless the service forces continuations off the consumer thread.
+        var deliveryThread = new Thread(() => harness.DeliverReply(correlationId, "{}"));
+        deliveryThread.Start();
+        deliveryThread.Join();
+
+        await continuation;
+        Assert.NotSame(deliveryThread, continuationThread);
+    }
+
+    [Fact]
     public async Task Timeout_returns_temporary_unavailable_error()
     {
         var harness = new Harness(rpcTimeoutSeconds: 1);

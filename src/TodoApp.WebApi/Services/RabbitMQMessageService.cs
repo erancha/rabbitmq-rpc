@@ -104,7 +104,9 @@ public class RabbitMQMessageService : IRabbitMQMessageService
     public async Task<string> PublishMessageRpc<T>(T message, string routingKey, bool executeIfTimeout = false)
     {
         var correlationId = Guid.NewGuid().ToString();
-        var tcs = new TaskCompletionSource<string>();
+        // Keeps awaiting callers' continuations off the single reply-consumer thread, which
+        // would otherwise serialize all response handling under load.
+        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         _pendingRequests.TryAdd(correlationId, tcs); // Will always succeed as correlationId is a new GUID
 
