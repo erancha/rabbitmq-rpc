@@ -33,8 +33,6 @@ if (host.Environment.IsDevelopment())
     host.MapGet("/", () => Results.Redirect("/swagger"));
 }
 
-host.UseHttpsRedirection();
-host.UseAuthorization();
 host.MapControllers();
 
 host.Services.GetRequiredService<IHostApplicationLifetime>()
