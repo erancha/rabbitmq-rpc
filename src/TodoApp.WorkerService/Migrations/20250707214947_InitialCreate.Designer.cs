@@ -12,8 +12,8 @@ using TodoApp.WorkerService.Data;
 namespace TodoApp.Shared.Migrations
 {
     [DbContext(typeof(TodoDbContext))]
-    [Migration("20250707214947_MigrationName")]
-    partial class MigrationName
+    [Migration("20250707214947_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

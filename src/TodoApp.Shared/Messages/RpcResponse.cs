@@ -3,13 +3,12 @@ namespace TodoApp.Shared.Messages;
 public class RpcResponse
 {
     public bool Success { get; set; }
-    public int? CreatedId { get; set; }
     public RpcError? Error { get; set; }
 
     public override string ToString()
     {
         if (Success)
-            return CreatedId.HasValue ? $"Success (ID: {CreatedId})" : "Success";
+            return "Success";
         return Error != null ? $"Error: {Error.Message} ({Error.Kind})" : "Error: Unknown";
     }
 }

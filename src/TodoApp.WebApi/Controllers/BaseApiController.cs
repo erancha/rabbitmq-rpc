@@ -18,7 +18,7 @@ public abstract class BaseApiController : ControllerBase
 
     /// <summary>
     /// Converts a worker RPC response into an HTTP action result.
-    /// Success: 200 OK with the Data payload, the CreatedId when present, or an empty body.
+    /// Success: 200 OK with the Data payload, or an empty body.
     /// Error: maps the RPC error kind to an HTTP status code (404 NOT_FOUND, 400 VALIDATION,
     /// 503 TEMPORARY_UNAVAILABLE, 500 otherwise) and returns { success: false, errorMessage }
     /// without exposing the internal error kind to HTTP clients.
@@ -43,11 +43,6 @@ public abstract class BaseApiController : ControllerBase
             if (genericResult.RootElement.TryGetProperty("Data", out var dataElement))
             {
                 return Ok(dataElement.Deserialize<object>());
-            }
-            else if (genericResult.RootElement.TryGetProperty("CreatedId", out var createdIdElement) &&
-                     !createdIdElement.ValueKind.Equals(JsonValueKind.Null))
-            {
-                return Ok(new { createdId = createdIdElement.GetInt32() });
             }
 
             return Ok();

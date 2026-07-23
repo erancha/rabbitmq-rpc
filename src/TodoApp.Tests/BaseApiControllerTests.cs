@@ -62,17 +62,6 @@ public class BaseApiControllerTests
     }
 
     [Fact]
-    public void Success_response_with_created_id_returns_ok_with_created_id()
-    {
-        var controller = new TestableController();
-
-        var result = controller.InvokeHandleRpcResponse("{\"Success\":true,\"CreatedId\":42}");
-
-        var okResult = Assert.IsType<OkObjectResult>(result);
-        Assert.Contains("42", JsonSerializer.Serialize(okResult.Value));
-    }
-
-    [Fact]
     public void Bare_success_response_returns_ok_without_body()
     {
         var controller = new TestableController();
