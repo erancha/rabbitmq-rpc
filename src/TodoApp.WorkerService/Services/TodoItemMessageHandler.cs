@@ -23,7 +23,8 @@ public class TodoItemMessageHandler : BaseMessageHandler
     {
         _logger.LogInformation("Processing message of type {MessageType}", messageType);
 
-        // Create a new scope to get a fresh DbContext instance for each message
+        // A singleton handler shouldn't receive a scoped TodoDbContext in the ctor: it needs a
+        // different dbContext per request, as DbContext isn't thread-safe.
         using var scope = _scopeFactory.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<TodoDbContext>();
 

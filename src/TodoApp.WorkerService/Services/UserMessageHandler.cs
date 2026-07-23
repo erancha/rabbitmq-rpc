@@ -27,8 +27,10 @@ public class UserMessageHandler : BaseMessageHandler
     {
         _logger.LogInformation("[Instance {InstanceId}] Processing message of type {MessageType}", _instanceId, messageType);
 
-        // Get a fresh DbContext instance for each message
-        var dbContext = _scopeFactory.CreateScope().ServiceProvider.GetRequiredService<TodoDbContext>();
+        // A singleton handler shouldn't receive a scoped TodoDbContext in the ctor: it needs a
+        // different dbContext per request, as DbContext isn't thread-safe.
+        using var scope = _scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<TodoDbContext>();
 
         switch (messageType)
         {
