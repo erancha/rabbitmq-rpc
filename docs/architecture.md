@@ -45,7 +45,7 @@ This application uses RabbitMQ's Direct Exchange with RPC (Remote Procedure Call
 
 - **Exchange**: A direct exchange `todo-app-exchange` routes messages based on simple **routing keys**, since this app needs deterministic 1:1 routing (`user` -> users queue, `todo` -> todos queue) rather than broadcast (fanout), pattern-based topics, or header-based routing
 - **Queues**: Two dedicated queues for handling user and todo operations respectively
-- **Reply Queues & Correlation IDs**: All RPC requests from one WebApi instance share a single durable reply queue and unique correlation ID to track responses (see [Trade-offs & implementation notes](#trade-offs--implementation-notes-what-to-pay-attention-to))
+- **Reply Queues & Correlation IDs**: All RPC requests from one WebApi instance share a single exclusive reply queue and unique correlation ID to track responses (see [Trade-offs & implementation notes](#trade-offs--implementation-notes-what-to-pay-attention-to))
 
 ### Error Handling & Reliability
 
@@ -67,10 +67,10 @@ This application uses RabbitMQ's Direct Exchange with RPC (Remote Procedure Call
 - Higher complexity compared to HTTP communication
 - Additional operational overhead for queue management
 - Reply queue design:
-  - Each WebApi instance creates one durable, named reply queue at startup ([RabbitMQMessageService.cs](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs)), instead of a temporary queue per request
-  - The queue persists across broker restarts and connection failures, and a single long-lived consumer serves all in-flight requests, avoiding per-request queue/consumer churn
+  - Each WebApi instance creates one named, exclusive, auto-delete reply queue at startup ([RabbitMQMessageService.cs](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs)), instead of a temporary queue per request
+  - A single long-lived consumer serves all in-flight requests, avoiding per-request queue/consumer churn
   - Correlation IDs route responses to the correct pending request within the instance
-  - Trade-off: unlike auto-delete exclusive queues, named durable queues are not cleaned up by the broker — decommissioning a WebApi instance leaves its reply queue behind until deleted manually
+  - The reply queue is deliberately not durable: pending requests live only in the instance's memory, so a reply queue that outlived its instance or a broker restart could never deliver to anyone — the broker removes the queue when the instance's connection closes, so restarts leave nothing behind
 - Potential debugging complexity in distributed scenarios
 
 ## PostgreSQL

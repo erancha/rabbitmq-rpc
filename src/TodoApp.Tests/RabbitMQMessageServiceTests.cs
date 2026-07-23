@@ -47,12 +47,14 @@ public class RabbitMQMessageServiceTests
     private sealed class Harness
     {
         public RabbitMQMessageService Service { get; }
+        public Mock<IModel> Channel { get; }
         public EventingBasicConsumer ReplyConsumer { get; private set; } = null!;
         public List<(string Exchange, string RoutingKey, IBasicProperties Props, byte[] Body)> Published { get; } = new();
 
         public Harness(int rpcTimeoutSeconds, ILogger<RabbitMQMessageService>? logger = null)
         {
             var channel = new Mock<IModel>();
+            Channel = channel;
 
             channel.Setup(c => c.CreateBasicProperties()).Returns(() =>
             {
@@ -95,6 +97,18 @@ public class RabbitMQMessageServiceTests
             ReplyConsumer.HandleBasicDeliver(
                 "consumer-tag", 1, false, "", "", props.Object, Encoding.UTF8.GetBytes(payload));
         }
+    }
+
+    [Fact]
+    public void Reply_queue_is_exclusive_and_deleted_with_its_instance()
+    {
+        var harness = new Harness(rpcTimeoutSeconds: 30);
+
+        // Pending requests live only in this instance's memory, so a reply queue that outlived
+        // the instance could never deliver to anyone; the broker must clean it up on disconnect.
+        harness.Channel.Verify(c => c.QueueDeclare(
+            $"webapi-replies-{Environment.MachineName}", false, true, true,
+            It.IsAny<IDictionary<string, object>>()), Times.Once);
     }
 
     [Fact]

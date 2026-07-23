@@ -35,8 +35,9 @@ public interface IRabbitMQMessageService
 /// RPC client over RabbitMQ, used by the WebApi to delegate requests to the worker service.
 ///
 /// Core design:
-/// - One durable, instance-specific reply queue ("webapi-replies-{instanceId}") declared at
-///   startup, giving each WebApi instance isolated reply traffic for debugging and monitoring
+/// - One exclusive, auto-delete, instance-specific reply queue ("webapi-replies-{instanceId}")
+///   declared at startup, giving each WebApi instance isolated reply traffic for debugging and
+///   monitoring
 /// - Pending requests are tracked by correlation ID; entries are added on publish and removed
 ///   when the reply arrives or the request times out, so entries for requests the worker will
 ///   never answer cannot accumulate
@@ -72,7 +73,11 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         var instanceId = Environment.MachineName;
         _replyQueueName = $"webapi-replies-{instanceId}";
 
-        _consumerChannel.QueueDeclare(queue: _replyQueueName, durable: true);
+        // Exclusive and auto-delete: pending requests live only in this instance's memory, so a
+        // reply queue that outlived the instance could never deliver to anyone — the broker
+        // removes it when the instance's connection closes.
+        _consumerChannel.QueueDeclare(
+            queue: _replyQueueName, durable: false, exclusive: true, autoDelete: true);
 
         var consumer = new EventingBasicConsumer(_consumerChannel);
 
