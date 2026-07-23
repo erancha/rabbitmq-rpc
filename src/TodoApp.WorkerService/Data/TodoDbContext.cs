@@ -30,6 +30,7 @@ public class TodoDbContext : DbContext
             entity.Property(e => e.Title).IsRequired();
             entity.Property(e => e.Description).IsRequired(false);
             entity.Property(e => e.IsDeleted).HasDefaultValue(false);
+            // Deleting a user purges all their items, soft-deleted included — history does not outlive its owner.
             entity.HasOne<User>().WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 

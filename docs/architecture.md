@@ -75,6 +75,11 @@ messaging — is compared factor by factor in [Why RabbitMQ RPC?](../README.md#w
 The application uses a clean, normalized database schema implemented in PostgreSQL.
 The schema definitions are managed by the Worker Service and can be found in [Models/](../src/TodoApp.Shared/Models/), [Migrations/](../src/TodoApp.WorkerService/Migrations/), and [TodoDbContext.cs](../src/TodoApp.WorkerService/Data/TodoDbContext.cs)
 
+**Deletion model:** deleting a todo item is a soft delete (`IsDeleted` flag), so an item remains
+recoverable while its owner exists. Deleting a user is a hard delete that cascade-removes all of the
+user's todo items, soft-deleted ones included — todo history is scoped to its owner's lifetime, and
+orphaned history for a nonexistent user has no value.
+
 > **Note about Entity Framework Core's Fluent API:**  
 > The Fluent API is Entity Framework Core's method for configuring database relationships and constraints using method chaining in C#. For example:
 >
