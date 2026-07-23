@@ -1,16 +1,36 @@
 # Architecture
 
-The WebAPI delegates every request to the Worker Service over RabbitMQ RPC: requests are routed through a durable direct exchange to durable queues, replies come back on a per-instance reply queue matched by correlation ID, and worker errors are returned as typed RPC error responses. The Worker Service is the only writer to a minimal PostgreSQL schema.
-
-See the diagram for how the WebAPI uses the [RabbitMQ RPC pattern](#communication-pattern) to delegate requests it receives to the Worker Service and wait for responses.
+Every REST call the WebAPI accepts becomes a message: routed through a durable direct exchange to
+a durable queue, processed by one of the Worker Service replicas — the only writer to a minimal
+PostgreSQL schema — and answered on the calling instance's reply queue matched by correlation ID,
+with worker errors returned as typed RPC error responses. The [communication pattern](#communication-pattern)
+below walks through this flow step by step.
 
 ![Todo App Architecture Diagram](architecture-diagram.svg)
 
-## Features
+## When is RabbitMQ RPC worth it?
 
-- RESTful APIs for User and Todo Item management, with Swagger UI for API documentation and testing.
-- [Entity Framework Core](https://learn.microsoft.com/en-us/ef/core/managing-schemas/migrations/) with [Code-First approach](../src/TodoApp.WorkerService/Data/TodoDbContext.cs) (defining the schema in C# models/configuration to generate/update the DB via migrations).
-- RabbitMQ message-based communication between the services
+The REST caller expects the operation's result in the HTTP response, so the services need
+request-response semantics — but carrying that traffic over RabbitMQ instead of a direct HTTP call
+buys broker-mediated durability and competing-consumer scaling at the cost of extra moving parts:
+
+| Factor                 | Direct HTTP call                                            | RabbitMQ RPC (this project)                                                             | Fire-and-forget messaging                            |
+| ---------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Response to caller     | Native                                                      | Reply queue + correlation ID                                                             | None — results must be fetched separately            |
+| Simplicity             | Simplest: one call, one stack trace                         | Broker, exchange, queues, and correlation IDs to configure and debug                     | Broker plumbing, but no reply path                   |
+| Durability             | None — an in-flight request is lost if the callee is down   | Requests persist in durable queues across worker and broker restarts                     | Same durable-queue guarantee                         |
+| Horizontal scalability | Requires a load balancer or service discovery               | Add worker replicas; the broker load-balances the shared queue across competing consumers | Same competing-consumer scaling                      |
+| Load leveling          | Bursts hit the callee directly                              | The queue absorbs bursts; workers drain at their own pace, bounded by the RPC timeout    | Queue absorbs bursts with no timeout pressure        |
+| Temporal coupling      | Both sides must be up simultaneously                        | The worker can restart mid-burst without losing requests; the caller still awaits a reply | None — producer and consumer fully independent       |
+| Latency                | Lowest                                                      | Two broker hops per call                                                                 | Not applicable — no reply                            |
+| Failure handling       | Errors surface immediately to the caller                    | At-least-once delivery: handlers must be idempotent; failed messages dead-letter for replay | At-least-once, but failures are invisible to the producer |
+
+Choose RabbitMQ RPC when the caller needs the result synchronously **and** durability,
+load leveling, or competing-consumer scaling matters. Choose a direct HTTP call when latency and
+simplicity dominate and both services are reliably available. Choose fire-and-forget messaging
+when the caller does not need a result at all. How this codebase implements the reply path and
+delivery guarantees is detailed in
+[Trade-offs & implementation notes](#trade-offs--implementation-notes-what-to-pay-attention-to).
 
 ## Project Structure
 
@@ -55,11 +75,6 @@ This application uses RabbitMQ's Direct Exchange with RPC (Remote Procedure Call
 - Connection retries with exponential backoff at startup ([Connections.cs](../src/TodoApp.Shared/Configuration/RabbitMQ/Connections.cs)). OPEN — an established connection or the reply consumer's channel is not automatically recovered if it drops later.
 - Timeout handling for RPC calls ([RabbitMQMessageService.cs](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs): configurable via `WebApi__RpcTimeoutSeconds`, 10 seconds by default)
 
-### Use cases (when RabbitMQ RPC is a good fit)
-
-When RabbitMQ RPC is worth its complexity — versus a direct HTTP call or fire-and-forget
-messaging — is compared factor by factor in [Why RabbitMQ RPC?](../README.md#why-rabbitmq-rpc).
-
 ### Trade-offs & implementation notes (what to pay attention to)
 
 - Reply queue design:
@@ -72,8 +87,10 @@ messaging — is compared factor by factor in [Why RabbitMQ RPC?](../README.md#w
 
 ### Schema Design
 
-The application uses a clean, normalized database schema implemented in PostgreSQL.
-The schema definitions are managed by the Worker Service and can be found in [Models/](../src/TodoApp.Shared/Models/), [Migrations/](../src/TodoApp.WorkerService/Migrations/), and [TodoDbContext.cs](../src/TodoApp.WorkerService/Data/TodoDbContext.cs)
+The application uses a clean, normalized database schema implemented in PostgreSQL, defined
+Code-First with [Entity Framework Core](https://learn.microsoft.com/en-us/ef/core/managing-schemas/migrations/):
+the schema lives in C# models and configuration, and the Worker Service applies it to the database
+via migrations. See [Models/](../src/TodoApp.Shared/Models/), [Migrations/](../src/TodoApp.WorkerService/Migrations/), and [TodoDbContext.cs](../src/TodoApp.WorkerService/Data/TodoDbContext.cs)
 
 **Deletion model:** deleting a todo item is a soft delete (`IsDeleted` flag), so an item remains
 recoverable while its owner exists. Deleting a user is a hard delete that cascade-removes all of the
