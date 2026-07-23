@@ -97,21 +97,6 @@ recoverable while its owner exists. Deleting a user is a hard delete that cascad
 user's todo items, soft-deleted ones included — todo history is scoped to its owner's lifetime, and
 orphaned history for a nonexistent user has no value.
 
-> **Note about Entity Framework Core's Fluent API:**  
-> The Fluent API is Entity Framework Core's method for configuring database relationships and constraints using method chaining in C#. For example:
->
-> ```csharp
-> modelBuilder.Entity<User>(entity => {
->     entity.HasKey(e => e.Id);                    // Sets primary key
->     entity.HasIndex(e => e.Username).IsUnique(); // Sets unique constraint
->     entity.HasMany<TodoItem>()                   // Sets one-to-many relationship
->           .WithOne()
->           .HasForeignKey(e => e.UserId);
-> });
-> ```
->
-> This approach provides more control and flexibility than using attributes/annotations in the model classes.
-
 ### Startup
 
 The worker service ensures database availability before processing messages:
