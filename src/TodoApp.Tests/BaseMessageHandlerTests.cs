@@ -103,50 +103,76 @@ public class BaseMessageHandlerTests
     #region Error-kind mapping
 
     [Fact]
-    public void KeyNotFoundException_maps_to_NOT_FOUND()
+    public void NotFoundException_maps_to_NOT_FOUND_with_its_authored_message()
     {
         var handler = CreateHandler(new Mock<IModel>());
-        var error = ErrorOf(handler.InvokeCreateErrorResponse(new KeyNotFoundException("user 7 missing")));
+        var error = ErrorOf(handler.InvokeCreateErrorResponse(new NotFoundException("user 7 missing")));
         Assert.Equal(RpcErrorKind.NOT_FOUND, error.Kind);
         Assert.Equal("user 7 missing", error.Message);
     }
 
     [Fact]
-    public void InvalidOperationException_maps_to_VALIDATION()
+    public void ValidationException_maps_to_VALIDATION_with_its_authored_message()
     {
         var handler = CreateHandler(new Mock<IModel>());
-        var error = ErrorOf(handler.InvokeCreateErrorResponse(new InvalidOperationException("bad input")));
+        var error = ErrorOf(handler.InvokeCreateErrorResponse(new ValidationException("bad input")));
         Assert.Equal(RpcErrorKind.VALIDATION, error.Kind);
+        Assert.Equal("bad input", error.Message);
     }
+
+    [Fact]
+    public void Framework_InvalidOperationException_maps_to_FATAL_without_its_message()
+    {
+        var handler = CreateHandler(new Mock<IModel>());
+        var error = ErrorOf(handler.InvokeCreateErrorResponse(
+            new InvalidOperationException("No service for type 'TodoDbContext' has been registered.")));
+        Assert.Equal(RpcErrorKind.FATAL, error.Kind);
+        Assert.Equal(GenericFatalMessage, error.Message);
+    }
+
+    [Fact]
+    public void Framework_KeyNotFoundException_maps_to_FATAL_without_its_message()
+    {
+        var handler = CreateHandler(new Mock<IModel>());
+        var error = ErrorOf(handler.InvokeCreateErrorResponse(
+            new KeyNotFoundException("The given key was not present in the dictionary.")));
+        Assert.Equal(RpcErrorKind.FATAL, error.Kind);
+        Assert.Equal(GenericFatalMessage, error.Message);
+    }
+
+    private const string GenericFatalMessage = "An unexpected error occurred while processing the request.";
 
     [Theory]
-    [InlineData("23505")] // unique constraint violation
-    [InlineData("23503")] // foreign key violation
-    public void Postgres_constraint_violation_maps_to_VALIDATION_with_pg_message(string sqlState)
+    [InlineData("23505", "A record with this unique value already exists.")] // unique constraint violation
+    [InlineData("23503", "The referenced record does not exist.")] // foreign key violation
+    public void Postgres_constraint_violation_maps_to_VALIDATION_with_sanitized_message(
+        string sqlState, string expectedMessage)
     {
         var handler = CreateHandler(new Mock<IModel>());
-        var pgException = new PostgresException("duplicate key", "ERROR", "ERROR", sqlState);
+        var pgException = new PostgresException(
+            "duplicate key value violates unique constraint \"IX_Users_Username\"", "ERROR", "ERROR", sqlState);
         var error = ErrorOf(handler.InvokeCreateErrorResponse(new DbUpdateException("wrapper", pgException)));
         Assert.Equal(RpcErrorKind.VALIDATION, error.Kind);
-        Assert.Equal("duplicate key", error.Message);
+        Assert.Equal(expectedMessage, error.Message);
     }
 
     [Fact]
-    public void Postgres_error_with_other_sql_state_maps_to_FATAL()
+    public void Postgres_error_with_other_sql_state_maps_to_FATAL_without_sql_details()
     {
         var handler = CreateHandler(new Mock<IModel>());
-        var pgException = new PostgresException("relation missing", "ERROR", "ERROR", "42P01");
+        var pgException = new PostgresException("relation \"Users\" does not exist", "ERROR", "ERROR", "42P01");
         var error = ErrorOf(handler.InvokeCreateErrorResponse(new DbUpdateException("wrapper", pgException)));
         Assert.Equal(RpcErrorKind.FATAL, error.Kind);
-        Assert.Equal("relation missing", error.Message);
+        Assert.Equal(GenericFatalMessage, error.Message);
     }
 
     [Fact]
-    public void Unrecognized_exception_maps_to_FATAL()
+    public void Unrecognized_exception_maps_to_FATAL_without_exception_details()
     {
         var handler = CreateHandler(new Mock<IModel>());
         var error = ErrorOf(handler.InvokeCreateErrorResponse(new ArgumentException("boom")));
         Assert.Equal(RpcErrorKind.FATAL, error.Kind);
+        Assert.Equal(GenericFatalMessage, error.Message);
     }
 
     #endregion
@@ -280,7 +306,7 @@ public class BaseMessageHandlerTests
     public async Task Failing_request_is_nacked_before_the_error_reply_is_published()
     {
         var harness = await ConsumerHarness.CreateStartedAsync();
-        harness.Handler.OnProcess = (_, _) => throw new KeyNotFoundException("no such user");
+        harness.Handler.OnProcess = (_, _) => throw new NotFoundException("no such user");
 
         harness.Deliver(ageSeconds: 0, timeoutSeconds: 30, executeIfTimeout: false);
 

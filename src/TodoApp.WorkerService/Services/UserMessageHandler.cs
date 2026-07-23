@@ -37,7 +37,7 @@ public class UserMessageHandler : BaseMessageHandler
                     return CreateSuccessResponse(id);
                 }
                 else
-                    throw new InvalidOperationException(
+                    throw new ValidationException(
                         $"Deserialization failed for CreateUserMessage. Message: {message}"
                     );
 
@@ -46,7 +46,7 @@ public class UserMessageHandler : BaseMessageHandler
                 if (updateMessage != null)
                     await UpdateUser(dbContext, updateMessage);
                 else
-                    throw new InvalidOperationException(
+                    throw new ValidationException(
                         $"Deserialization failed for UpdateUserMessage. Message: {message}"
                     );
                 break;
@@ -56,7 +56,7 @@ public class UserMessageHandler : BaseMessageHandler
                 if (deleteMessage != null)
                     await DeleteUser(dbContext, deleteMessage);
                 else
-                    throw new InvalidOperationException(
+                    throw new ValidationException(
                         $"Deserialization failed for DeleteUserMessage. Message: {message}"
                     );
                 break;
@@ -70,18 +70,18 @@ public class UserMessageHandler : BaseMessageHandler
                 var getUserMessage = JsonSerializer.Deserialize<GetUserByIdMessage>(message);
                 if (getUserMessage != null)
                 {
-                    var user = await GetUserById(dbContext, getUserMessage) ?? throw new KeyNotFoundException($"User with ID {getUserMessage.Id} not found");
+                    var user = await GetUserById(dbContext, getUserMessage) ?? throw new NotFoundException($"User with ID {getUserMessage.Id} not found");
                     var userResponse = new GetUserByIdResponse { User = user };
                     return CreateSuccessResponse(userResponse);
                 }
                 else
-                    throw new InvalidOperationException(
+                    throw new ValidationException(
                         $"Deserialization failed for GetUserByIdMessage. Message: {message}"
                     );
 
             default:
                 _logger.LogWarning("Unknown message type: {MessageType}", messageType);
-                throw new InvalidOperationException($"Unknown message type: {messageType}");
+                throw new ValidationException($"Unknown message type: {messageType}");
         }
 
         return CreateSuccessResponse();
@@ -108,7 +108,7 @@ public class UserMessageHandler : BaseMessageHandler
     {
         var user = await dbContext.Users.FindAsync(message.Id);
         if (user == null)
-            throw new KeyNotFoundException($"User with ID {message.Id} not found");
+            throw new NotFoundException($"User with ID {message.Id} not found");
 
         if (message.Data.Username != null)
             user.Username = message.Data.Username;
@@ -124,7 +124,7 @@ public class UserMessageHandler : BaseMessageHandler
         var user = await dbContext.Users.FindAsync(message.Id);
         if (user == null)
         {
-            throw new KeyNotFoundException($"User with ID {message.Id} not found");
+            throw new NotFoundException($"User with ID {message.Id} not found");
         }
 
         dbContext.Users.Remove(user);

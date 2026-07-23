@@ -64,7 +64,7 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
                 if (string.IsNullOrEmpty(messageType))
                 {
                     _logger.LogWarning("Message type is missing");
-                    var errorResponse = CreateErrorResponse(new InvalidOperationException("Message type is missing"), message ?? string.Empty);
+                    var errorResponse = CreateErrorResponse(new ValidationException("Message type is missing"), message ?? string.Empty);
                     SendRpcResponse(ea, errorResponse);
                     return;
                 }
@@ -248,22 +248,17 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
 
     protected string CreateErrorResponse(Exception ex, string requestMessage)
     {
-        var kind = ex switch
+        // Only DomainException messages are authored as client-facing text; anything else —
+        // framework and driver messages, SQL constraint names — is replaced by a domain-level
+        // message here. The full exception stays in the server-side log below.
+        var (kind, message) = ex switch
         {
-            KeyNotFoundException => RpcErrorKind.NOT_FOUND,
-            InvalidOperationException => RpcErrorKind.VALIDATION,
-            DbUpdateException dbEx
-                when dbEx.InnerException is PostgresException pgEx
-                    && (pgEx.SqlState == "23505" || pgEx.SqlState == "23503") =>
-                RpcErrorKind.VALIDATION,
-            _ => RpcErrorKind.FATAL,
-        };
-
-        var message = ex switch
-        {
-            DbUpdateException dbEx when dbEx.InnerException is PostgresException pgEx =>
-                pgEx.MessageText,
-            _ => ex.Message,
+            DomainException domainEx => (domainEx.Kind, domainEx.Message),
+            DbUpdateException { InnerException: PostgresException { SqlState: "23505" } } =>
+                (RpcErrorKind.VALIDATION, "A record with this unique value already exists."),
+            DbUpdateException { InnerException: PostgresException { SqlState: "23503" } } =>
+                (RpcErrorKind.VALIDATION, "The referenced record does not exist."),
+            _ => (RpcErrorKind.FATAL, "An unexpected error occurred while processing the request."),
         };
 
         var response = new RpcResponse<object>
@@ -273,9 +268,9 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
         };
         var json = JsonSerializer.Serialize(response);
         _logger.LogError(
-            "CreateErrorResponse({ExType}, {Message}, {Kind}, {RequestMessage}) -> {Response}",
+            ex,
+            "CreateErrorResponse({ExType}, {Kind}, {RequestMessage}) -> {Response}",
             ex.GetType().Name,
-            message,
             kind,
             requestMessage,
             json

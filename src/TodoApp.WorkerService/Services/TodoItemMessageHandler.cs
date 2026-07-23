@@ -33,7 +33,7 @@ public class TodoItemMessageHandler : BaseMessageHandler
                     return CreateSuccessResponse(id);
                 }
                 else
-                    throw new InvalidOperationException(
+                    throw new ValidationException(
                         $"Deserialization failed for CreateTodoItemMessage. Message: {message}"
                     );
 
@@ -42,7 +42,7 @@ public class TodoItemMessageHandler : BaseMessageHandler
                 if (updateMessage != null)
                     await UpdateTodoItem(dbContext, updateMessage);
                 else
-                    throw new InvalidOperationException(
+                    throw new ValidationException(
                         $"Deserialization failed for UpdateTodoItemMessage. Message: {message}"
                     );
                 break;
@@ -52,7 +52,7 @@ public class TodoItemMessageHandler : BaseMessageHandler
                 if (deleteMessage != null)
                     await DeleteTodoItem(dbContext, deleteMessage);
                 else
-                    throw new InvalidOperationException(
+                    throw new ValidationException(
                         $"Deserialization failed for DeleteTodoItemMessage. Message: {message}"
                     );
                 break;
@@ -67,13 +67,13 @@ public class TodoItemMessageHandler : BaseMessageHandler
                     return CreateSuccessResponse(todos);
                 }
                 else
-                    throw new InvalidOperationException(
+                    throw new ValidationException(
                         $"Deserialization failed for GetTodosByUserIdMessage. Message: {message}"
                     );
 
             default:
                 _logger.LogWarning("Unknown message type: {MessageType}", messageType);
-                throw new InvalidOperationException($"Unknown message type: {messageType}");
+                throw new ValidationException($"Unknown message type: {messageType}");
         }
 
         return CreateSuccessResponse();
@@ -103,7 +103,7 @@ public class TodoItemMessageHandler : BaseMessageHandler
     {
         var todoItem = await dbContext.TodoItems.FindAsync(message.Id);
         if (todoItem == null || todoItem.IsDeleted)
-            throw new KeyNotFoundException($"TodoItem with ID {message.Id} not found");
+            throw new NotFoundException($"TodoItem with ID {message.Id} not found");
 
         if (message.Data.Title != null)
             todoItem.Title = message.Data.Title;
@@ -126,7 +126,7 @@ public class TodoItemMessageHandler : BaseMessageHandler
     {
         var todoItem = await dbContext.TodoItems.FindAsync(message.Id);
         if (todoItem == null || todoItem.IsDeleted)
-            throw new KeyNotFoundException($"TodoItem with ID {message.Id} not found");
+            throw new NotFoundException($"TodoItem with ID {message.Id} not found");
 
         todoItem.IsDeleted = true;
         todoItem.DeletedAt = DateTime.UtcNow;
