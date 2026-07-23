@@ -1,37 +1,53 @@
 # Durable RPC over RabbitMQ (.NET)
 
-A two-service .NET backend built around a durable RPC pattern on RabbitMQ: a Web API accepts REST
-calls and delegates every operation through a durable direct exchange to a Worker Service, then
-blocks on the worker's reply — routed back on a per-instance reply queue and matched by
-correlation ID.
+A two-service .NET backend demonstrating durable RPC over RabbitMQ, exercised by a deliberately
+minimal Todo domain: a Web API accepts REST calls, delegates every operation through the broker to
+a Worker Service — the only PostgreSQL writer — and returns the worker's reply in the HTTP
+response.
 
-RabbitMQ carries request-response (RPC) traffic rather than fire-and-forget messages — the REST
-caller expects the operation's result in the HTTP response — which buys decoupling, broker-mediated
-durability, and competing-consumer scaling of the workers without making the API asynchronous.
+**Contents:** [Why RabbitMQ RPC?](#why-rabbitmq-rpc) · [Functional Requirements](docs/requirements.md) · [Architecture](#architecture) · [Getting Started](#getting-started) · [Load Testing](docs/load-testing.md)
 
-The domain exercising the pattern is a deliberately minimal Todo backend (Users and Todo items),
-persisted to PostgreSQL via EF Core by the Worker Service — the only database writer.
+## Why RabbitMQ RPC?
 
-**Contents:** [Functional Requirements](docs/requirements.md) · [Architecture](docs/architecture.md) · [Getting Started](#getting-started)
+The REST caller expects the operation's result in the HTTP response, so the services need
+request-response semantics — but carrying that traffic over RabbitMQ instead of a direct HTTP call
+buys broker-mediated durability and competing-consumer scaling at the cost of extra moving parts:
 
-## Functional Requirements
+| Factor                 | Direct HTTP call                                            | RabbitMQ RPC (this project)                                                             | Fire-and-forget messaging                            |
+| ---------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Response to caller     | Native                                                      | Reply queue + correlation ID                                                             | None — results must be fetched separately            |
+| Simplicity             | Simplest: one call, one stack trace                         | Broker, exchange, queues, and correlation IDs to configure and debug                     | Broker plumbing, but no reply path                   |
+| Durability             | None — an in-flight request is lost if the callee is down   | Requests persist in durable queues across worker and broker restarts                     | Same durable-queue guarantee                         |
+| Horizontal scalability | Requires a load balancer or service discovery               | Add worker replicas; the broker load-balances the shared queue across competing consumers | Same competing-consumer scaling                      |
+| Load leveling          | Bursts hit the callee directly                              | The queue absorbs bursts; workers drain at their own pace, bounded by the RPC timeout    | Queue absorbs bursts with no timeout pressure        |
+| Temporal coupling      | Both sides must be up simultaneously                        | The worker can restart mid-burst without losing requests; the caller still awaits a reply | None — producer and consumer fully independent       |
+| Latency                | Lowest                                                      | Two broker hops per call                                                                 | Not applicable — no reply                            |
+| Failure handling       | Errors surface immediately to the caller                    | At-least-once delivery: handlers must be idempotent; failed messages dead-letter for replay | At-least-once, but failures are invisible to the producer |
 
-The REST APIs, entity model, service split, and Docker Compose deliverables the demo application is built to satisfy are listed in [docs/requirements.md](docs/requirements.md).
+Choose RabbitMQ RPC when the caller needs the result synchronously **and** durability,
+load leveling, or competing-consumer scaling matters. Choose a direct HTTP call when latency and simplicity
+dominate and both services are reliably available. Choose fire-and-forget messaging when the
+caller does not need a result at all. The trade-offs specific to this codebase (reply queue
+design, delivery guarantees) are detailed in
+[Architecture → Trade-offs](docs/architecture.md#trade-offs--implementation-notes-what-to-pay-attention-to).
 
 ## Architecture
 
-The Web API delegates every request to the Worker Service over a RabbitMQ RPC pattern, and the Worker Service is the only writer to PostgreSQL. The messaging flow, database schema, threading model, and scalability measurements are described in [docs/architecture.md](docs/architecture.md): 
+The Web API delegates every request to the Worker Service over RabbitMQ RPC, and the Worker
+Service is the only writer to PostgreSQL. The messaging flow, database schema, threading model,
+and scalability measurements are described in [docs/architecture.md](docs/architecture.md):
 
-<a href="docs/architecture.md"><img src="docs/architecture-diagram.svg" alt="Todo App Architecture Diagram" width="360"></a>
+<a href="docs/architecture.md"><img src="docs/architecture-diagram.svg" alt="Todo App Architecture Diagram" width="800"></a>
 
 ## Getting Started
 
 ### Prerequisites
 
-- Docker and Docker Compose
-
-The services compile inside the .NET 8.0 SDK image during the Docker build, so a host .NET SDK is
-needed only to build or edit `src/TodoApp.sln` outside Docker.
+- Docker and Docker Compose. The services are compiled inside the .NET 8.0 SDK image during the
+  Docker build, so no host .NET SDK is required.
+- Optional: a host .NET 8 SDK, to build or edit `src/TodoApp.sln` or run the unit tests outside
+  Docker (if none is found, `./scripts/run-tests.sh` downloads one into `~/.dotnet`, no sudo
+  needed).
 
 To start the application:
 
@@ -48,24 +64,6 @@ The following services will be available:
 - PostgreSQL (database name: **tododb**), reachable only from the compose network. To open a shell
   against it: `docker compose -p todo-app exec postgres psql -U postgres -d tododb`
 
-### Load testing
-
-With the application running, drive load against it using the JMeter test plans in `jmeter/`. If
-`jmeter` is not on your PATH, the helper downloads and installs it locally (only Java is required).
-
-```bash
-# Minimal: 2 threads * 5 loops = 10 requests (the default)
-./scripts/jmeter-helper.sh
-
-# Long: 200 threads * 250 loops = 50,000 requests
-./scripts/jmeter-helper.sh --long
-```
-
-By default only JMeter's console summary is printed; pass `--jtl` to also write per-request
-results to `jmeter/results-<mode>.jtl`. See
-[deploy/README.md](deploy/README.md#jmeter-load-testing) for what each plan exercises and what to
-expect in the database.
-
 To stop the application:
 
 ```bash
@@ -75,5 +73,5 @@ To stop the application:
 ./scripts/docker-helper.sh --stop --volumes
 ```
 
-`docker-helper.sh` also tails the stack's logs (`--logs`, with severity and service filters) and
-shows container status (`--ps`); see `./scripts/docker-helper.sh --help`.
+`docker-helper.sh` can also tail the stack's logs (`--logs`, with severity and service filters) and
+show container status (`--ps`); see `./scripts/docker-helper.sh --help`.

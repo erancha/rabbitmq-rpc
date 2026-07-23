@@ -57,21 +57,16 @@ This application uses RabbitMQ's Direct Exchange with RPC (Remote Procedure Call
 
 ### Use cases (when RabbitMQ RPC is a good fit)
 
-- Service decoupling with request-response semantics (but without synchronous HTTP coupling)
-- Need for durable messaging / broker-mediated delivery
-- Offline resilience (worker can keep processing even if the API is briefly unavailable)
-- Load distribution across multiple workers
+When RabbitMQ RPC is worth its complexity — versus a direct HTTP call or fire-and-forget
+messaging — is compared factor by factor in [Why RabbitMQ RPC?](../README.md#why-rabbitmq-rpc).
 
 ### Trade-offs & implementation notes (what to pay attention to)
 
-- Higher complexity compared to HTTP communication
-- Additional operational overhead for queue management
 - Reply queue design:
   - Each WebApi instance creates one named, exclusive, auto-delete reply queue at startup ([RabbitMQMessageService.cs](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs)), instead of a temporary queue per request
   - A single long-lived consumer serves all in-flight requests, avoiding per-request queue/consumer churn
   - Correlation IDs route responses to the correct pending request within the instance
   - The reply queue is deliberately not durable: pending requests live only in the instance's memory, so a reply queue that outlived its instance or a broker restart could never deliver to anyone — the broker removes the queue when the instance's connection closes, so restarts leave nothing behind
-- Potential debugging complexity in distributed scenarios
 
 ## PostgreSQL
 
@@ -143,7 +138,5 @@ Each replica runs pending EF migrations at startup. Concurrently starting replic
 first boot of an empty database; the compose `restart: unless-stopped` policy retries the replica
 that loses the race.
 
-The scalability can be tested using the JMeter test plans:
-
-- `jmeter/test-minimal.jmx` (2 threads \* 5 loops)
-- `jmeter/test-long.jmx` (200 threads \* 250 loops)
+Scalability under load can be exercised with the JMeter test plans; see
+[Load Testing](load-testing.md).
