@@ -16,7 +16,7 @@ namespace TodoApp.WorkerService.Services;
 public abstract class BaseMessageHandler : IHostedService, IDisposable
 {
     protected readonly IModel _channel;
-    protected readonly IServiceScopeFactory _scopeFactory;
+    private readonly IServiceScopeFactory _scopeFactory;
     protected readonly ILogger _logger;
     protected readonly string _queueName;
 
@@ -89,7 +89,8 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
                 // TODO: Ensure idempotency for at-least-once delivery. RabbitMQ can redeliver messages if a consumer crashes/disconnects before ack.
                 // TODO: Implement deduplication (e.g., persist ea.BasicProperties.CorrelationId and/or ea.BasicProperties.MessageId with a DB uniqueness constraint)
                 // TODO: so that retries/redeliveries do not cause duplicate writes/side-effects.
-                var rpcResponse = await ProcessMessage(messageType, message);
+
+                var rpcResponse = await PrepareAndProcessMessage(messageType, message);
                 _channel.BasicAck(ea.DeliveryTag, multiple: false);
                 acked = true;
 
@@ -124,7 +125,19 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
         return Task.CompletedTask;
     }
 
-    protected abstract Task<string> ProcessMessage(string messageType, string message);
+    /// <summary>
+    /// Runs ProcessMessage with a fresh TodoDbContext resolved from a scope bounded to this message.
+    /// </summary>
+    private async Task<string> PrepareAndProcessMessage(string messageType, string message)
+    {
+        // A singleton handler shouldn't receive a scoped TodoDbContext in the ctor: it
+        // needs a different dbContext per request, as DbContext isn't thread-safe.
+        using var scope = _scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<TodoDbContext>();
+        return await ProcessMessage(dbContext, messageType, message);
+    }
+
+    protected abstract Task<string> ProcessMessage(TodoDbContext dbContext, string messageType, string message);
 
     public virtual void Dispose()
     {

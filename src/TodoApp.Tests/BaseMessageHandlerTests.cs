@@ -9,16 +9,52 @@ using Npgsql;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using TodoApp.Shared.Messages;
+using TodoApp.WorkerService.Data;
 using TodoApp.WorkerService.Services;
 
 namespace TodoApp.Tests;
 
 /// <summary>
 /// Verifies the worker-side message pipeline: exception-to-error-kind mapping in RPC error
-/// responses, the timed-out-request skip branch, and ack/nack plus reply publication behavior.
+/// responses, the timed-out-request skip branch, ack/nack plus reply publication behavior, and
+/// the per-message DI scope lifecycle.
 /// </summary>
 public class BaseMessageHandlerTests
 {
+    /// <summary>
+    /// Test replacement for the DI scope factory. Each CreateScope call returns a scope that
+    /// serves a new TodoDbContext (not connected to any database) and counts how many scopes
+    /// were created and disposed — letting tests assert that every message was processed in its
+    /// own scope and that the scope was disposed when processing finished.
+    /// </summary>
+    private sealed class TrackingScopeFactory : IServiceScopeFactory
+    {
+        public int Created { get; private set; }
+        public int Disposed { get; private set; }
+
+        public IServiceScope CreateScope()
+        {
+            Created++;
+            return new TrackingScope(this);
+        }
+
+        private sealed class TrackingScope : IServiceScope, IServiceProvider
+        {
+            private readonly TrackingScopeFactory _owner;
+
+            public TrackingScope(TrackingScopeFactory owner) => _owner = owner;
+
+            public IServiceProvider ServiceProvider => this;
+
+            public object? GetService(Type serviceType) =>
+                serviceType == typeof(TodoDbContext)
+                    ? new TodoDbContext(new DbContextOptionsBuilder<TodoDbContext>().Options)
+                    : null;
+
+            public void Dispose() => _owner.Disposed++;
+        }
+    }
+
     /// <summary>
     /// Minimal concrete handler exposing the protected error-response factory and delegating
     /// message processing to a test-supplied callback.
@@ -29,12 +65,19 @@ public class BaseMessageHandlerTests
         public Func<string, string, Task<string>> OnProcess { get; set; } =
             (_, _) => Task.FromResult("{\"Success\":true}");
 
+        public TrackingScopeFactory Scopes { get; }
+
         public TestableHandler(IModel channel, DbInitializationSignal signal)
-            : base("test-queue", channel, new Mock<IServiceScopeFactory>().Object,
-                NullLogger.Instance, signal)
+            : this(channel, signal, new TrackingScopeFactory())
         { }
 
-        protected override Task<string> ProcessMessage(string messageType, string message)
+        private TestableHandler(IModel channel, DbInitializationSignal signal, TrackingScopeFactory scopes)
+            : base("test-queue", channel, scopes, NullLogger.Instance, signal)
+        {
+            Scopes = scopes;
+        }
+
+        protected override Task<string> ProcessMessage(TodoDbContext dbContext, string messageType, string message)
         {
             Processed.Add((messageType, message));
             return OnProcess(messageType, message);
@@ -278,6 +321,29 @@ public class BaseMessageHandlerTests
         // close the channel; the delivery is settled and the client simply times out.
         harness.Channel.Verify(
             c => c.BasicNack(It.IsAny<ulong>(), It.IsAny<bool>(), It.IsAny<bool>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Each_delivery_is_processed_in_its_own_scope_that_is_disposed_afterwards()
+    {
+        var harness = await ConsumerHarness.CreateStartedAsync();
+
+        harness.Deliver(ageSeconds: 0, timeoutSeconds: 30, executeIfTimeout: false);
+
+        Assert.Equal(1, harness.Handler.Scopes.Created);
+        Assert.Equal(1, harness.Handler.Scopes.Disposed);
+    }
+
+    [Fact]
+    public async Task Scope_is_disposed_even_when_processing_fails()
+    {
+        var harness = await ConsumerHarness.CreateStartedAsync();
+        harness.Handler.OnProcess = (_, _) => throw new InvalidOperationException("boom");
+
+        harness.Deliver(ageSeconds: 0, timeoutSeconds: 30, executeIfTimeout: false);
+
+        Assert.Equal(1, harness.Handler.Scopes.Created);
+        Assert.Equal(1, harness.Handler.Scopes.Disposed);
     }
 
     #endregion

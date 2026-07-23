@@ -19,14 +19,9 @@ public class TodoItemMessageHandler : BaseMessageHandler
         DbInitializationSignal dbInitializationSignal)
         : base(CurrentQueueName, channelPool.Get(), scopeFactory, logger, dbInitializationSignal) { }
 
-    protected override async Task<string> ProcessMessage(string messageType, string message)
+    protected override async Task<string> ProcessMessage(TodoDbContext dbContext, string messageType, string message)
     {
         _logger.LogInformation("Processing message of type {MessageType}", messageType);
-
-        // A singleton handler shouldn't receive a scoped TodoDbContext in the ctor: it needs a
-        // different dbContext per request, as DbContext isn't thread-safe.
-        using var scope = _scopeFactory.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<TodoDbContext>();
 
         switch (messageType)
         {
