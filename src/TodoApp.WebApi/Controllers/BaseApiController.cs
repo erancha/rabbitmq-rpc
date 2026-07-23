@@ -65,21 +65,17 @@ public abstract class BaseApiController : ControllerBase
         };
 
     /// <summary>
-    /// Converts controller-local validation into an HTTP response.
-    /// If validation fails, returns <see cref="BadRequestObjectResult"/> with a simple payload.
-    /// If validation succeeds, returns <c>null</c> so the caller can continue processing.
+    /// Returns a 400 Bad Request result carrying the validation error message when
+    /// controller-local validation failed, or null when it passed — null tells the action
+    /// to proceed and publish the RPC message.
     /// </summary>
-    /// <param name="validationResult">The result of local validation performed by the controller.</param>
-    /// <returns>
-    /// A <see cref="BadRequestObjectResult"/> when <paramref name="validationResult"/> is invalid; otherwise <c>null</c>.
-    /// </returns>
-    protected IActionResult HandleLocalResponse(LocalValidationResult validationResult)
+    protected IActionResult? HandleLocalResponse(LocalValidationResult validationResult)
     {
         if (!validationResult.IsValid)
         {
             var response = new { errorMessage = validationResult.ErrorMessage };
             return BadRequest(response);
         }
-        return null!;
+        return null;
     }
 }
