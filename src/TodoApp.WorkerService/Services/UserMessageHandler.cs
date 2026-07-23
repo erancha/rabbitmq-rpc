@@ -134,7 +134,7 @@ public class UserMessageHandler : BaseMessageHandler
 
     private async Task<List<User>> GetAllUsers(TodoDbContext dbContext)
     {
-        return await dbContext.Users.OrderBy(u => u.Id).Take(100).ToListAsync();
+        return await dbContext.Users.OrderBy(u => u.Id).ToListAsync();
     }
 
     private async Task<User?> GetUserById(TodoDbContext dbContext, GetUserByIdMessage message)
