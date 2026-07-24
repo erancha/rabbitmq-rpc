@@ -41,7 +41,7 @@ public class TodoItemsController : BaseApiController
                 RabbitMQShared.RoutingKeys.Todo,
                 executeIfTimeout: true
             );
-            return HandleRpcResponse(result);
+            return HandleRpcCreatedResponse(result, nameof(GetTodoItemById));
         }
         catch (Exception ex)
         {
@@ -100,6 +100,30 @@ public class TodoItemsController : BaseApiController
         }
     }
 
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetTodoItemById(int id)
+    {
+        var validation = ValidateGetTodoItem(id);
+        var localResponse = HandleLocalResponse(validation);
+        if (localResponse != null)
+            return localResponse;
+
+        try
+        {
+            var message = new GetTodoItemByIdMessage(id);
+            var result = await _rabbitMQMessageService.PublishMessageRpc<GetTodoItemByIdMessage>(
+                message,
+                RabbitMQShared.RoutingKeys.Todo
+            );
+            return HandleRpcResponse(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error publishing get todo item by id message");
+            return StatusCode(500, "Error processing request");
+        }
+    }
+
     [HttpGet("user/{userId}")]
     public async Task<IActionResult> GetTodosByUserId(int userId)
     {
@@ -153,6 +177,14 @@ public class TodoItemsController : BaseApiController
     }
 
     private LocalValidationResult ValidateDeleteTodoItem(int id)
+    {
+        if (id <= 0)
+            return new LocalValidationResult(false, "Id must be greater than 0");
+
+        return new LocalValidationResult(true);
+    }
+
+    private LocalValidationResult ValidateGetTodoItem(int id)
     {
         if (id <= 0)
             return new LocalValidationResult(false, "Id must be greater than 0");

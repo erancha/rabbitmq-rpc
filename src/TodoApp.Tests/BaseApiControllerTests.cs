@@ -18,6 +18,8 @@ public class BaseApiControllerTests
         public TestableController() : base(NullLogger<BaseApiController>.Instance) { }
 
         public IActionResult InvokeHandleRpcResponse(string responseJson) => HandleRpcResponse(responseJson);
+        public IActionResult InvokeHandleRpcCreatedResponse(string responseJson, string getActionName) =>
+            HandleRpcCreatedResponse(responseJson, getActionName);
         public static int InvokeGetStatusCode(string? kind) => GetStatusCode(kind);
     }
 
@@ -69,6 +71,33 @@ public class BaseApiControllerTests
         var result = controller.InvokeHandleRpcResponse("{\"Success\":true}");
 
         Assert.IsType<OkResult>(result);
+    }
+
+    [Fact]
+    public void Created_response_returns_201_with_route_to_the_new_resource()
+    {
+        var controller = new TestableController();
+
+        var result = controller.InvokeHandleRpcCreatedResponse(
+            "{\"Success\":true,\"Data\":{\"createdId\":7}}", "GetUserById");
+
+        var createdResult = Assert.IsType<CreatedAtActionResult>(result);
+        Assert.Equal("GetUserById", createdResult.ActionName);
+        Assert.Equal(7, createdResult.RouteValues!["id"]);
+        Assert.Contains("createdId", JsonSerializer.Serialize(createdResult.Value));
+    }
+
+    [Fact]
+    public void Created_response_maps_worker_errors_like_any_other_response()
+    {
+        var controller = new TestableController();
+
+        var result = controller.InvokeHandleRpcCreatedResponse(
+            $"{{\"Success\":false,\"Error\":{{\"Message\":\"bad input\",\"Kind\":\"{RpcErrorKind.VALIDATION}\"}}}}",
+            "GetUserById");
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(400, objectResult.StatusCode);
     }
 
     [Fact]

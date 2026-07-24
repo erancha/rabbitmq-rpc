@@ -71,6 +71,18 @@ public class TodoItemMessageHandler : BaseMessageHandler
                         $"Deserialization failed for GetTodosByUserIdMessage. Message: {message}"
                     );
 
+            case nameof(GetTodoItemByIdMessage):
+                var getTodoMessage = JsonSerializer.Deserialize<GetTodoItemByIdMessage>(message);
+                if (getTodoMessage != null)
+                {
+                    var todo = await GetTodoItemById(dbContext, getTodoMessage);
+                    return CreateSuccessResponse(todo);
+                }
+                else
+                    throw new ValidationException(
+                        $"Deserialization failed for GetTodoItemByIdMessage. Message: {message}"
+                    );
+
             default:
                 _logger.LogWarning("Unknown message type: {MessageType}", messageType);
                 throw new ValidationException($"Unknown message type: {messageType}");
@@ -144,20 +156,33 @@ public class TodoItemMessageHandler : BaseMessageHandler
             .OrderByDescending(t => t.CreatedAt)
             .ToListAsync();
 
-        return todos
-            .Select(t => new TodoItemResponse
-            {
-                Id = t.Id,
-                Title = t.Title,
-                Description = t.Description,
-                IsCompleted = t.IsCompleted,
-                CreatedAt = t.CreatedAt,
-                CompletedAt = t.CompletedAt,
-                IsDeleted = t.IsDeleted,
-                DeletedAt = t.DeletedAt,
-            })
-            .ToList();
+        return todos.Select(ToResponse).ToList();
     }
+
+    private async Task<TodoItemResponse> GetTodoItemById(
+        TodoDbContext dbContext,
+        GetTodoItemByIdMessage message
+    )
+    {
+        var todoItem = await dbContext.TodoItems.FindAsync(message.Id);
+        if (todoItem == null || todoItem.IsDeleted)
+            throw new NotFoundException($"TodoItem with ID {message.Id} not found");
+
+        return ToResponse(todoItem);
+    }
+
+    private static TodoItemResponse ToResponse(TodoItem todoItem) =>
+        new()
+        {
+            Id = todoItem.Id,
+            Title = todoItem.Title,
+            Description = todoItem.Description,
+            IsCompleted = todoItem.IsCompleted,
+            CreatedAt = todoItem.CreatedAt,
+            CompletedAt = todoItem.CompletedAt,
+            IsDeleted = todoItem.IsDeleted,
+            DeletedAt = todoItem.DeletedAt,
+        };
 
     public override void Dispose() { }
 }

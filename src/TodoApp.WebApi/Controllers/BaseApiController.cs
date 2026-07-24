@@ -24,7 +24,35 @@ public abstract class BaseApiController : ControllerBase
     /// without exposing the internal error kind to HTTP clients.
     /// </summary>
     /// <param name="responseJson">The serialized RpcResponse received from the worker.</param>
-    protected IActionResult HandleRpcResponse(string responseJson)
+    protected IActionResult HandleRpcResponse(string responseJson) =>
+        HandleRpcResponse(responseJson, root =>
+            root.TryGetProperty("Data", out var dataElement)
+                ? Ok(dataElement.Deserialize<object>())
+                : Ok());
+
+    /// <summary>
+    /// Converts a worker RPC response to a creation into an HTTP action result.
+    /// Success: 201 Created with the Data payload and a Location header pointing at the
+    /// resource's GET action, using the createdId the worker returns as the route id.
+    /// Errors are mapped exactly as in HandleRpcResponse; a success payload without createdId
+    /// violates the creation contract and surfaces as a 500 rather than being defaulted.
+    /// </summary>
+    /// <param name="responseJson">The serialized RpcResponse received from the worker.</param>
+    /// <param name="getActionName">Name of the controller's GET-by-id action for the Location header.</param>
+    protected IActionResult HandleRpcCreatedResponse(string responseJson, string getActionName) =>
+        HandleRpcResponse(responseJson, root =>
+        {
+            var dataElement = root.GetProperty("Data");
+            var createdId = dataElement.GetProperty("createdId").GetInt32();
+            return CreatedAtAction(getActionName, new { id = createdId }, dataElement.Deserialize<object>());
+        });
+
+    /// <summary>
+    /// Shared RPC response pipeline: parses the envelope, maps worker errors to HTTP status
+    /// codes without exposing the internal error kind, and delegates successful envelopes to
+    /// the caller's result factory. Any parsing or factory failure becomes a 500.
+    /// </summary>
+    private IActionResult HandleRpcResponse(string responseJson, Func<JsonElement, IActionResult> onSuccess)
     {
         _logger.LogInformation("Handling RPC response: {Response}", responseJson);
 
@@ -40,13 +68,7 @@ public abstract class BaseApiController : ControllerBase
                 return StatusCode(statusCode, new { success = false, errorMessage = error?.Message });
             }
 
-            if (genericResult.RootElement.TryGetProperty("Data", out var dataElement))
-            {
-                return Ok(dataElement.Deserialize<object>());
-            }
-
-            return Ok();
-
+            return onSuccess(genericResult.RootElement);
         }
         catch (Exception ex)
         {

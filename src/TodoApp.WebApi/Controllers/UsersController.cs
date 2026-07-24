@@ -38,7 +38,7 @@ public class UsersController : BaseApiController
                 RabbitMQShared.RoutingKeys.User,
                 executeIfTimeout: true
             );
-            return HandleRpcResponse(responseJson);
+            return HandleRpcCreatedResponse(responseJson, nameof(GetUserById));
         }
         catch (Exception ex)
         {
