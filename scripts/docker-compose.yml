@@ -1,3 +1,9 @@
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 10s
+  timeout: 5s
+  retries: 10
+  start_period: 30s
+
 services:
   webapi:
     image: todo-app:webapi-${TAG:-dev}
@@ -16,6 +22,9 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
     restart: unless-stopped
     logging:
       driver: "json-file"  # logs in /var/lib/docker/containers/<container_id>/<container_id>-json.log. Find ID with: docker compose ps -q <service_name> or docker inspect <service_name>
@@ -40,11 +49,17 @@ services:
       - RabbitMQ__Host=rabbitmq
       - RabbitMQ__Username=guest
       - RabbitMQ__Password=guest
+      - HEARTBEAT_FILE=/tmp/healthy
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    healthcheck:
+      <<: *healthcheck-defaults
+      # Fails when the heartbeat file is missing (unhealthy report) or stale (wedged process);
+      # the health publisher rewrites it every 30s while the RabbitMQ connection is open.
+      test: ["CMD-SHELL", "test -n \"$$(find \"$$HEARTBEAT_FILE\" -mmin -1 2>/dev/null)\""]
     restart: unless-stopped
     logging:
       driver: "json-file"  # logs in /var/lib/docker/containers/<container_id>/<container_id>-json.log. Find ID with: docker compose ps -q <service_name> or docker inspect <service_name>
@@ -76,11 +91,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
+      <<: *healthcheck-defaults
       test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
     restart: unless-stopped
     deploy:
       resources:
@@ -103,11 +115,8 @@ services:
       - RABBITMQ_DEFAULT_USER=guest
       - RABBITMQ_DEFAULT_PASS=guest
     healthcheck:
+      <<: *healthcheck-defaults
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
     restart: unless-stopped
     deploy:
       resources:

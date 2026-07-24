@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.ObjectPool;
 using RabbitMQ.Client;
 using TodoApp.WorkerService.Configuration;
@@ -22,6 +23,17 @@ builder.Services.AddSingleton<ObjectPool<IModel>>(_ => channelPool);
 var setupChannel = channelPool.Get();
 RabbitMQSetup.DeclareAndBindQueues(setupChannel);
 channelPool.Return(setupChannel);
+
+builder.Services.AddHealthChecks()
+    .AddCheck("rabbitmq", new RabbitMQConnectionHealthCheck(connection));
+
+// Heartbeat publishing is opt-in via HEARTBEAT_FILE: the container orchestrator sets it and
+// probes the file's freshness; local runs have no probe, so no file is written.
+var heartbeatFilePath = builder.Configuration["HEARTBEAT_FILE"];
+if (heartbeatFilePath != null)
+    builder.Services.AddSingleton<IHealthCheckPublisher>(
+        new HeartbeatFileHealthPublisher(heartbeatFilePath)
+    );
 
 builder.Services.AddDbContext<TodoDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))

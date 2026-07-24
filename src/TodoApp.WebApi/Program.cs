@@ -19,6 +19,8 @@ var rabbitMQConfig =
 IConnection connection = RabbitMQShared.Connections.ConnectAndBindExchange(rabbitMQConfig);
 builder.Services.AddSingleton<ObjectPool<IModel>>(_ => RabbitMQChannelPoolFactory.CreateChannelPool(connection));
 builder.Services.AddSingleton<IRabbitMQMessageService, RabbitMQMessageService>();
+builder.Services.AddHealthChecks()
+    .AddCheck("rabbitmq", new RabbitMQConnectionHealthCheck(connection));
 
 builder.Services.Configure<WebApiConfig>(builder.Configuration.GetSection("WebApi"));
 
@@ -34,6 +36,7 @@ if (host.Environment.IsDevelopment())
 }
 
 host.MapControllers();
+host.MapHealthChecks("/health");
 
 host.Services.GetRequiredService<IHostApplicationLifetime>()
     .ApplicationStopping.Register(() => connection?.Close());
