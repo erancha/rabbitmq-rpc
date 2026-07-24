@@ -10,8 +10,17 @@ using TodoApp.WorkerService.Data;
 namespace TodoApp.WorkerService.Services;
 
 /// <summary>
-/// Base class for RabbitMQ message handlers providing common RPC response functionality
-/// and message processing infrastructure.
+/// Consumes one queue and answers each delivery on the caller's reply queue.
+///
+/// Core responsibilities:
+/// - Holds consumption until DbInitializationSignal completes, so no message is processed
+///   against an unmigrated database
+/// - Draws one message at a time (prefetch 1), so replicas compete for work by availability
+/// - Settles every delivery exactly once: acked after processing, nacked to the dead-letter
+///   exchange on failure, and never re-settled afterwards
+/// - Drops requests whose client-supplied deadline has already passed, unless the request opted
+///   into execution past its timeout
+/// - Maps exceptions to RPC error kinds, exposing only domain-authored text to clients
 /// </summary>
 public abstract class BaseMessageHandler : IHostedService, IDisposable
 {
@@ -86,9 +95,10 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
                 }
 
                 message = Encoding.UTF8.GetString(ea.Body.ToArray());
-                // TODO: Ensure idempotency for at-least-once delivery. RabbitMQ can redeliver messages if a consumer crashes/disconnects before ack.
-                // TODO: Implement deduplication (e.g., persist ea.BasicProperties.CorrelationId and/or ea.BasicProperties.MessageId with a DB uniqueness constraint)
-                // TODO: so that retries/redeliveries do not cause duplicate writes/side-effects.
+                // TODO: Ensure idempotency for at-least-once delivery. RabbitMQ redelivers when a
+                // consumer crashes or disconnects before acking, so retries currently cause
+                // duplicate writes. Deduplicate by persisting the correlation/message ID under a
+                // uniqueness constraint.
 
                 var rpcResponse = await PrepareAndProcessMessage(messageType, message);
                 _channel.BasicAck(ea.DeliveryTag, multiple: false);
@@ -141,19 +151,16 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
 
     public virtual void Dispose()
     {
-        // No resources to dispose in base class
     }
 
     #region Request and Response Helpers
 
     /// <summary>
-    /// Checks if a request has exceeded its timeout duration.
+    /// Reports whether the caller has already stopped waiting, by measuring the request's age
+    /// against the timeout it carried. Age is the difference between two clocks — the publisher's
+    /// timestamp and this process's — so it is only as accurate as their skew. Deliveries with no
+    /// timestamp or headers are treated as live, since their age is unknowable.
     /// </summary>
-    /// <param name="ea">The delivery event args containing message properties</param>
-    /// <param name="messageType">The type of message being processed</param>
-    /// <param name="elapsedSeconds">Output parameter for the elapsed time since request was sent</param>
-    /// <param name="timeoutSeconds">Output parameter for the request's timeout duration</param>
-    /// <returns>True if the request has timed out, false otherwise</returns>
     private bool HasRequestTimedOut(
         BasicDeliverEventArgs ea,
         string messageType,
@@ -281,11 +288,10 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
     #endregion
 
     /// <summary>
-    /// Attempts to normalize a JSON string by parsing and re-serializing it without indentation.
-    /// Returns the original string if parsing fails.
+    /// Collapses a request payload to single-line JSON for the error log. The payload is
+    /// attacker-influenced and may not be JSON at all, so unparseable input is logged verbatim
+    /// rather than rejected.
     /// </summary>
-    /// <param name="message">The JSON string to normalize.</param>
-    /// <returns>The normalized JSON string, or the original if invalid.</returns>
     private string UnescapeJsonMessage(string message)
     {
         try

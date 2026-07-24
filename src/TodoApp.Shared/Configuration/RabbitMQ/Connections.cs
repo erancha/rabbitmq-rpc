@@ -25,7 +25,7 @@ public static class Connections
             {
                 if (retry == maxRetries)
                     throw;
-                var delay = TimeSpan.FromSeconds(Math.Pow(2, retry - 1)); // 1, 2, 4, 8, 16 seconds
+                var delay = TimeSpan.FromSeconds(Math.Pow(2, retry - 1)); // 1, 2, 4, 8 seconds
                 Thread.Sleep(delay);
             }
         }
@@ -33,7 +33,6 @@ public static class Connections
         if (connection is null)
             throw new InvalidOperationException("Failed to establish RabbitMQ connection");
 
-        // Short-lived channel used only to declare the exchange.
         using (var channel = connection.CreateModel())
         {
             channel.ExchangeDeclare(

@@ -101,7 +101,7 @@ orphaned history for a nonexistent user has no value.
 
 The worker service ensures database availability before processing messages:
 
-1. [DbInitializationService](../src/TodoApp.WorkerService/Services/DbInitializationService.cs) runs migrations and verifies database readiness
+1. [DbInitializationService](../src/TodoApp.WorkerService/Services/DbInitializationService.cs) probes the database with exponential backoff, then runs pending migrations
 2. [Message handlers](../src/TodoApp.WorkerService/Services/BaseMessageHandler.cs) wait for an [DbInitializationSignal](../src/TodoApp.WorkerService/Services/DbInitializationSignal.cs) before consuming messages
 3. Once database is ready, the signal is triggered and handlers start processing
 

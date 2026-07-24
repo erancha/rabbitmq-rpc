@@ -11,7 +11,6 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Configure RabbitMQ
 builder.Services.Configure<RabbitMQShared.Config>(builder.Configuration.GetSection("RabbitMQ"));
 var rabbitMQConfig =
     builder.Configuration.GetSection("RabbitMQ").Get<RabbitMQShared.Config>()
@@ -26,7 +25,6 @@ builder.Services.Configure<WebApiConfig>(builder.Configuration.GetSection("WebAp
 
 var host = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (host.Environment.IsDevelopment())
 {
     host.UseSwagger();

@@ -3,9 +3,10 @@ using TodoApp.Shared.Models;
 
 namespace TodoApp.WorkerService.Data;
 
+// Schema of record for the Code-First model: every change here needs a matching migration
+// ('dotnet ef migrations add <name>'), which the worker applies at startup.
 public class TodoDbContext : DbContext
 {
-    // dotnet ef migrations add 'name' after making changes to the model
     public TodoDbContext(DbContextOptions<TodoDbContext> options) : base(options)
     {
     }

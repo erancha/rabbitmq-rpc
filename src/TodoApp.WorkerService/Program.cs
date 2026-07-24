@@ -11,7 +11,6 @@ using RabbitMQShared = TodoApp.Shared.Configuration.RabbitMQ;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// Configure RabbitMQ
 builder.Services.Configure<RabbitMQShared.Config>(builder.Configuration.GetSection("RabbitMQ"));
 var rabbitMQConfig =
     builder.Configuration.GetSection("RabbitMQ").Get<RabbitMQShared.Config>()
@@ -39,8 +38,8 @@ builder.Services.AddDbContext<TodoDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
 );
 
-// Register initialization service to run migrations before the application starts and an initialization signal
-// on which the message handlers (below) will wait before starting to consume requests, to make sure the database is ready:
+// The signal is what orders startup: migrations run to completion before any handler consumes,
+// so no message is processed against an unmigrated database.
 builder.Services.AddSingleton<DbInitializationSignal>();
 builder.Services.AddHostedService<DbInitializationService>();
 

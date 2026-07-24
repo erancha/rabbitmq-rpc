@@ -4,15 +4,13 @@ using Microsoft.EntityFrameworkCore.Design;
 namespace TodoApp.WorkerService.Data;
 
 /// <summary>
-/// Factory used by EF Core tools to create a DbContext when generating migrations with 'dotnet ef migrations add'.
-/// At runtime, the application uses the DbContext registered in Program.cs to apply these migrations.
+/// Supplies a DbContext to the EF Core tools when generating migrations ('dotnet ef migrations
+/// add'). The connection string below only tells those tools which provider to target — no
+/// database is contacted, and at runtime migrations are applied through the DbContext registered
+/// in Program.cs against the configured connection string.
 /// </summary>
 public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<TodoDbContext>
 {
-    /// <summary>
-    /// Creates a DbContext for generating migration files with 'dotnet ef migrations add'.
-    /// The connection string here is only used during migration generation, not for applying migrations at runtime.
-    /// </summary>
     public TodoDbContext CreateDbContext(string[] args)
     {
         var optionsBuilder = new DbContextOptionsBuilder<TodoDbContext>();

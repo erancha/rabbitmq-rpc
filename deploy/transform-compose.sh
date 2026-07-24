@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Check if username is provided
 if [ $# -lt 1 ]; then
     echo "Usage: $0 <docker_hub_username> [tag]"
     exit 1
@@ -9,31 +8,29 @@ fi
 DOCKER_HUB_USERNAME=$1
 TAG=${2:-latest}
 
-# Change to the deploy folder
 cd "$(dirname "$0")"
 
-# Create a temporary file for transformations
 cp "../scripts/docker-compose.yml" "./docker-compose.yml.tmp"
 
-# Replace webapi build section with image reference
+# Collapse each service's build stanza (service key through its dockerfile: line) into a single
+# image: reference, so the generated compose pulls published images instead of building.
 sed -i -E '
 /[[:space:]]+webapi:/,/[[:space:]]+dockerfile:.*WebApi\/Dockerfile/ c\
   webapi:\
     image: '"$DOCKER_HUB_USERNAME"'/todo-app:webapi-'"$TAG"'
 ' "./docker-compose.yml.tmp"
 
-# Replace worker build section with image reference
 sed -i -E '
 /[[:space:]]+worker:/,/[[:space:]]+dockerfile:.*WorkerService\/Dockerfile/ c\
   worker:\
     image: '"$DOCKER_HUB_USERNAME"'/todo-app:worker-'"$TAG"'
 ' "./docker-compose.yml.tmp"
 
-# Remove ASPNETCORE_ENVIRONMENT and DOTNET_ENVIRONMENT lines from the temp file
+# The source compose pins both services to Development; dropping those lines lets the deployed
+# containers fall back to the Production defaults their published images are built for.
 sed -i '/ASPNETCORE_ENVIRONMENT/d' ./docker-compose.yml.tmp
 sed -i '/DOTNET_ENVIRONMENT/d' ./docker-compose.yml.tmp
 
-# Move the temporary file to final location
 mv "./docker-compose.yml.tmp" "./docker-compose.yml"
 
 echo "Created deployment docker-compose.yml with Docker Hub images in the deploy folder"

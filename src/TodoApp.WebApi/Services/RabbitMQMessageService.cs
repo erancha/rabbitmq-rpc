@@ -24,7 +24,7 @@ public interface IRabbitMQMessageService
     /// </summary>
     /// <typeparam name="T">Type of the message to publish</typeparam>
     /// <param name="message">The message to publish</param>
-    /// <param name="routingKey">The queue name to publish to</param>
+    /// <param name="routingKey">Direct-exchange routing key selecting the worker queue</param>
     /// <param name="executeIfTimeout">If true, the worker service will execute the request even if client times out.
     /// Set to true for state-changing operations that should complete regardless of timeout.</param>
     /// <returns>The response message</returns>
@@ -44,8 +44,10 @@ public interface IRabbitMQMessageService
 /// - A single long-lived consumer on the reply queue dispatches each reply to its pending request
 /// - Publishing borrows short-lived channels from the shared channel pool
 ///
-/// OPEN — the reply consumer has no reconnection/recovery logic; it is a critical path and stops
-/// receiving replies if its channel or connection drops.
+/// A dropped connection is restored by RabbitMQ.Client's automatic connection and topology
+/// recovery, which re-declares the named reply queue and re-registers its consumer. Replies to
+/// requests in flight during the outage are lost, and those callers complete through the timeout
+/// path rather than being retried.
 /// </summary>
 public class RabbitMQMessageService : IRabbitMQMessageService
 {
