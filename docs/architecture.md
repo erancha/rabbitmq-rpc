@@ -96,8 +96,11 @@ may retry. One mechanism deduplicates both.
   body. Two replicas racing on a redelivery resolve the same way: one wins, the other replays.
 - **Bounded storage.** Markers matter only during the redelivery/retry window; a background sweep
   ([ProcessedMessageCleanupService.cs](../src/TodoApp.WorkerService/Services/ProcessedMessageCleanupService.cs))
-  deletes them past their retention age (10 minutes, set in the `Idempotency` config section —
-  appsettings.json or `Idempotency__*` environment variables).
+  runs once daily at an off-peak UTC hour (02:00 by default) and deletes markers past their
+  retention age (10 minutes). Because the sweep is daily, a marker persists until that day's sweep
+  rather than the moment it ages out — the retention age is the minimum lifetime, not the maximum.
+  Both settings live in the `Idempotency` config section (appsettings.json or `Idempotency__*`
+  environment variables).
 
 ### Trade-offs & implementation notes (what to pay attention to)
 

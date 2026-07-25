@@ -6,8 +6,9 @@ using TodoApp.WorkerService.Data;
 namespace TodoApp.WorkerService.Services;
 
 /// <summary>
-/// Deletes expired idempotency markers on a fixed interval so the ProcessedMessages table stays
-/// bounded. A marker is useful only during the redelivery/retry window; past the configured
+/// Deletes expired idempotency markers once per day, at a configured off-peak UTC hour, so the
+/// ProcessedMessages table stays bounded without the bulk delete competing with peak request
+/// traffic. A marker is useful only during the redelivery/retry window; past the configured
 /// retention age it is dead weight. Waits for database initialization before its first sweep.
 /// </summary>
 public class ProcessedMessageCleanupService : BackgroundService
@@ -34,8 +35,8 @@ public class ProcessedMessageCleanupService : BackgroundService
         await _dbInitializationSignal.Initialization;
 
         _logger.LogInformation(
-            "Idempotency marker sweep started: deleting markers older than {Retention}, every {SweepInterval}",
-            _options.Retention, _options.SweepInterval);
+            "Idempotency marker sweep started: deleting markers older than {Retention}, daily at {DailySweepAtUtc} UTC",
+            _options.Retention, _options.DailySweepAtUtc);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -43,13 +44,25 @@ public class ProcessedMessageCleanupService : BackgroundService
 
             try
             {
-                await Task.Delay(_options.SweepInterval, stoppingToken);
+                await Task.Delay(DelayUntilNextSweep(DateTime.UtcNow, _options.DailySweepAtUtc), stoppingToken);
             }
             catch (OperationCanceledException)
             {
                 break;
             }
         }
+    }
+
+    /// <summary>
+    /// Computes how long to wait from <paramref name="utcNow"/> until the next occurrence of the
+    /// daily sweep time. Returns a full day when the target hour has already passed today (or is
+    /// exactly now), so the sweep fires once per day at the configured UTC hour.
+    /// </summary>
+    public static TimeSpan DelayUntilNextSweep(DateTime utcNow, TimeSpan dailySweepAtUtc)
+    {
+        var todaysSweep = utcNow.Date + dailySweepAtUtc;
+        var nextSweep = todaysSweep > utcNow ? todaysSweep : todaysSweep.AddDays(1);
+        return nextSweep - utcNow;
     }
 
     private async Task SweepOnce(CancellationToken stoppingToken)

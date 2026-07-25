@@ -14,6 +14,7 @@ public class IdempotencyOptions
     // Markers older than this are deleted by the sweep.
     public TimeSpan Retention { get; set; } = TimeSpan.FromHours(1);
 
-    // How often the retention sweep runs.
-    public TimeSpan SweepInterval { get; set; } = TimeSpan.FromMinutes(15);
+    // Time of day, in UTC, at which the once-daily retention sweep runs. Anchored to an off-peak
+    // hour so the bulk delete does not compete with request processing during busy periods.
+    public TimeSpan DailySweepAtUtc { get; set; } = TimeSpan.FromHours(2);
 }
