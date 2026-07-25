@@ -153,9 +153,10 @@ across replicas. Raising the replica count is the scaling lever; each handler co
 [`scripts/optimize-replicas-count.sh`](../scripts/optimize-replicas-count.sh) searches for the
 best count for the host machine.
 
-Each replica runs pending EF migrations at startup. Concurrently starting replicas can race on the
-first boot of an empty database; the compose `restart: unless-stopped` policy retries the replica
-that loses the race.
+Each replica runs pending EF migrations at startup, serialized by a Postgres advisory lock
+([DbInitializationService.cs](../src/TodoApp.WorkerService/Services/DbInitializationService.cs)):
+on a fresh database, one replica migrates while the rest wait on the lock, then find nothing pending.
+This keeps concurrently starting replicas from racing to apply the same migrations.
 
 Scalability under load can be exercised with the JMeter test plans; see
 [Load Testing](load-testing.md).

@@ -12,6 +12,11 @@ public class DbInitializationService : IHostedService
 {
     private const int MaxConnectionAttempts = 5;
 
+    // Fixed key for the Postgres advisory lock that serializes concurrent replica migrations, so
+    // only one replica applies pending migrations at a time. Any constant works as long as every
+    // replica uses the same one.
+    private const long MigrationLockKey = 5410072;
+
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<DbInitializationService> _logger;
     private readonly DbInitializationSignal _dbInitializationSignal;
@@ -69,27 +74,48 @@ public class DbInitializationService : IHostedService
             _logger.LogInformation("Database connection successful");
 
             _logger.LogInformation("Starting database migration...");
-            var pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync(
-                cancellationToken
-            );
-            _logger.LogInformation($"Found {pendingMigrations.Count()} pending migrations");
 
+            // Concurrent replicas would otherwise race to apply the same migrations, the losers
+            // crash-looping on "relation already exists". The advisory lock serializes them, held on
+            // an explicitly opened connection so it spans MigrateAsync; Postgres drops it if a
+            // replica dies mid-migration.
+            var connection = dbContext.Database.GetDbConnection();
+            await connection.OpenAsync(cancellationToken);
             try
             {
-                await dbContext.Database.MigrateAsync(cancellationToken);
+                await dbContext.Database.ExecuteSqlRawAsync(
+                    $"SELECT pg_advisory_lock({MigrationLockKey})", cancellationToken);
+                try
+                {
+                    var pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync(
+                        cancellationToken
+                    );
+                    _logger.LogInformation($"Found {pendingMigrations.Count()} pending migrations");
 
-                var tables = await dbContext
-                    .Database.SqlQuery<string>(
-                        $"SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
-                    )
-                    .ToListAsync(cancellationToken);
+                    await dbContext.Database.MigrateAsync(cancellationToken);
 
-                _logger.LogInformation($"Tables in database: {string.Join(", ", tables)}");
+                    var tables = await dbContext
+                        .Database.SqlQuery<string>(
+                            $"SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
+                        )
+                        .ToListAsync(cancellationToken);
+
+                    _logger.LogInformation($"Tables in database: {string.Join(", ", tables)}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error during migration: {Message}", ex.Message);
+                    throw;
+                }
+                finally
+                {
+                    await dbContext.Database.ExecuteSqlRawAsync(
+                        $"SELECT pg_advisory_unlock({MigrationLockKey})", cancellationToken);
+                }
             }
-            catch (Exception ex)
+            finally
             {
-                _logger.LogError(ex, "Error during migration: {Message}", ex.Message);
-                throw;
+                await connection.CloseAsync();
             }
 
             _logger.LogInformation("Database migrations completed");
