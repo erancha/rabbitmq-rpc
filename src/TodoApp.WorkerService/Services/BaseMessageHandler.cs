@@ -5,6 +5,7 @@ using Npgsql;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using TodoApp.Shared.Messages;
+using TodoApp.Shared.Models;
 using TodoApp.WorkerService.Data;
 
 namespace TodoApp.WorkerService.Services;
@@ -95,12 +96,9 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
                 }
 
                 message = Encoding.UTF8.GetString(ea.Body.ToArray());
-                // TODO: Ensure idempotency for at-least-once delivery. RabbitMQ redelivers when a
-                // consumer crashes or disconnects before acking, so retries currently cause
-                // duplicate writes. Deduplicate by persisting the correlation/message ID under a
-                // uniqueness constraint.
+                var idempotencyKey = GetHeaderString(ea, RpcHeaders.IdempotencyKey);
 
-                var rpcResponse = await PrepareAndProcessMessage(messageType, message);
+                var rpcResponse = await PrepareAndProcessMessage(messageType, message, idempotencyKey);
                 _channel.BasicAck(ea.DeliveryTag, multiple: false);
                 acked = true;
 
@@ -138,13 +136,100 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
     /// <summary>
     /// Runs ProcessMessage with a fresh TodoDbContext resolved from a scope bounded to this message.
     /// </summary>
-    private async Task<string> PrepareAndProcessMessage(string messageType, string message)
+    private async Task<string> PrepareAndProcessMessage(string messageType, string message, string? idempotencyKey)
     {
         // A singleton handler shouldn't receive a scoped TodoDbContext in the ctor: it
         // needs a different dbContext per request, as DbContext isn't thread-safe.
         using var scope = _scopeFactory.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<TodoDbContext>();
-        return await ProcessMessage(dbContext, messageType, message);
+
+        // Reads carry no key, so there is nothing to deduplicate; only writes are keyed.
+        if (string.IsNullOrEmpty(idempotencyKey))
+            return await ProcessMessage(dbContext, messageType, message);
+
+        return await ProcessWithIdempotency(dbContext, messageType, message, idempotencyKey);
+    }
+
+    /// <summary>
+    /// Deduplicates a write. The marker is inserted in the same batch as the domain change, so the
+    /// normal path adds one insert and no read; the marker's primary key is the guard. A duplicate
+    /// (broker redelivery or HTTP retry — both carry the same key) makes that insert conflict, and
+    /// the reply stored on the first marker is replayed instead of writing again. Marker and write
+    /// share one transaction, committing or rolling back together. A key reused with a different
+    /// request body is rejected, not replayed.
+    /// </summary>
+    private async Task<string> ProcessWithIdempotency(
+        TodoDbContext dbContext,
+        string messageType,
+        string message,
+        string idempotencyKey
+    )
+    {
+        var requestHash = ComputeRequestHash(messageType, message);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync();
+
+        var marker = new ProcessedMessage
+        {
+            Key = idempotencyKey,
+            RequestHash = requestHash,
+            CreatedAt = DateTime.UtcNow,
+        };
+        dbContext.ProcessedMessages.Add(marker);
+
+        string response;
+        try
+        {
+            // ProcessMessage's SaveChangesAsync flushes the marker and the domain write in one batch —
+            // on the normal path, a single insert riding with the write, and no read.
+            response = await ProcessMessage(dbContext, messageType, message);
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            await transaction.RollbackAsync();
+
+            // The batch violated a unique constraint — either the marker's key (a duplicate request)
+            // or a domain constraint (a first-time request with, say, a taken username). A lookup
+            // tells them apart, and it runs only on a conflict, never on the normal path.
+            dbContext.ChangeTracker.Clear();
+            var existing = await dbContext.ProcessedMessages.FindAsync(idempotencyKey);
+            if (existing == null)
+                throw; // a domain constraint, not a duplicate key — surfaces as a validation error
+
+            if (existing.RequestHash != requestHash)
+                throw new IdempotencyConflictException("Idempotency-Key was already used for a different request.");
+
+            _logger.LogInformation("Replaying stored response for idempotency key {Key}", idempotencyKey);
+            // A committed marker always carries its reply — both are written in the same transaction.
+            return existing.ResponseJson!;
+        }
+
+        // Store the reply on the marker so a later duplicate replays it. The reply is known only
+        // after the write (a create's id comes from the insert), so this is a second save.
+        marker.ResponseJson = response;
+        await dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return response;
+    }
+
+    private static string ComputeRequestHash(string messageType, string message)
+    {
+        var bytes = System.Security.Cryptography.SHA256.HashData(
+            Encoding.UTF8.GetBytes($"{messageType}\n{message}"));
+        return Convert.ToHexString(bytes);
+    }
+
+    private static bool IsUniqueViolation(DbUpdateException ex) =>
+        ex.InnerException is PostgresException { SqlState: "23505" };
+
+    /// <summary>
+    /// Reads a string-valued AMQP header, which the client library delivers as a byte array.
+    /// Returns null when the header is absent.
+    /// </summary>
+    private static string? GetHeaderString(BasicDeliverEventArgs ea, string headerName)
+    {
+        if (ea.BasicProperties?.Headers?.TryGetValue(headerName, out var value) == true && value is byte[] bytes)
+            return Encoding.UTF8.GetString(bytes);
+        return null;
     }
 
     protected abstract Task<string> ProcessMessage(TodoDbContext dbContext, string messageType, string message);

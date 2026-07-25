@@ -9,11 +9,14 @@ Service — the only PostgreSQL writer — and returns the worker's reply in the
 ## Architecture
 
 The Web API delegates every request to the Worker Service over RabbitMQ RPC, and the Worker
-Service is the only writer to PostgreSQL. Carrying request-response traffic over a broker instead
-of a direct HTTP call buys durable queues, load leveling, and competing-consumer scaling at the
-cost of extra moving parts; [docs/architecture.md](docs/architecture.md) covers when that
-trade-off is worth it, along with the messaging flow, database schema, threading model, and
-scalability measurements:
+Service is the only writer to PostgreSQL. Every request takes effect **exactly once**, made
+idempotent by an optional client key (derived from the request content when absent) — see
+[Idempotency](docs/architecture.md#idempotency).
+
+Carrying request-response traffic over a broker instead of a direct HTTP call buys durable queues,
+load leveling, and competing-consumer scaling at the cost of extra moving parts;
+[docs/architecture.md](docs/architecture.md) covers when that trade-off is worth it, along with the
+messaging flow, database schema, threading model, and scalability measurements:
 
 <a href="docs/architecture.md"><img src="docs/architecture-diagram.svg" alt="Todo App Architecture Diagram" width="800"></a>
 

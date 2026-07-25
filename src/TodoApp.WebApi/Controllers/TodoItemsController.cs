@@ -34,12 +34,15 @@ public class TodoItemsController : BaseApiController
         if (localResponse != null)
             return localResponse;
 
+        var idempotencyKey = ResolveIdempotencyKey(message);
+
         try
         {
             var result = await _rabbitMQMessageService.PublishMessageRpc<CreateTodoItemMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.Todo,
-                executeIfTimeout: true
+                executeIfTimeout: true,
+                idempotencyKey: idempotencyKey
             );
             return HandleRpcCreatedResponse(result, nameof(GetTodoItemById));
         }
@@ -59,12 +62,14 @@ public class TodoItemsController : BaseApiController
             return localResponse;
 
         var message = new UpdateTodoItemMessage { Id = id, Data = data };
+        var idempotencyKey = ResolveIdempotencyKey(message);
         try
         {
             var result = await _rabbitMQMessageService.PublishMessageRpc<UpdateTodoItemMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.Todo,
-                executeIfTimeout: true
+                executeIfTimeout: true,
+                idempotencyKey: idempotencyKey
             );
             return HandleRpcResponse(result);
         }
@@ -83,13 +88,15 @@ public class TodoItemsController : BaseApiController
         if (localResponse != null)
             return localResponse;
 
+        var message = new DeleteTodoItemMessage(id);
+        var idempotencyKey = ResolveIdempotencyKey(message);
         try
         {
-            var message = new DeleteTodoItemMessage(id);
             var result = await _rabbitMQMessageService.PublishMessageRpc<DeleteTodoItemMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.Todo,
-                executeIfTimeout: true
+                executeIfTimeout: true,
+                idempotencyKey: idempotencyKey
             );
             return HandleRpcResponse(result);
         }

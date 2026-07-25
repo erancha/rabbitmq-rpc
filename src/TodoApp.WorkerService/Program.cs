@@ -38,6 +38,10 @@ builder.Services.AddDbContext<TodoDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
 );
 
+builder.Services.Configure<TodoApp.WorkerService.Configuration.IdempotencyOptions>(
+    builder.Configuration.GetSection(TodoApp.WorkerService.Configuration.IdempotencyOptions.SectionName)
+);
+
 // The signal is what orders startup: migrations run to completion before any handler consumes,
 // so no message is processed against an unmigrated database.
 builder.Services.AddSingleton<DbInitializationSignal>();
@@ -47,6 +51,9 @@ builder.Services.AddHostedService<DbInitializationService>();
 // replicas (compose: services.worker.deploy.replicas), which compete on the same durable queues.
 builder.Services.AddHostedService<UserMessageHandler>();
 builder.Services.AddHostedService<TodoItemMessageHandler>();
+
+// Bounds the idempotency-marker table by deleting rows past their retention age.
+builder.Services.AddHostedService<ProcessedMessageCleanupService>();
 
 var host = builder.Build();
 

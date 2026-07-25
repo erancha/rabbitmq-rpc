@@ -13,9 +13,18 @@ public class TodoDbContext : DbContext
 
     public DbSet<User> Users { get; set; } = null!;
     public DbSet<TodoItem> TodoItems { get; set; } = null!;
+    public DbSet<ProcessedMessage> ProcessedMessages { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<ProcessedMessage>(entity =>
+        {
+            // The idempotency key is the primary key: concurrent redelivery to two replicas races
+            // here, and the loser's INSERT fails on this constraint rather than duplicating the write.
+            entity.HasKey(e => e.Key);
+            entity.HasIndex(e => e.CreatedAt); // retention sweep scans by age
+        });
+
         modelBuilder.Entity<User>(entity =>
         {
             entity.HasKey(e => e.Id);

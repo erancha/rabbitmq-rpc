@@ -83,7 +83,7 @@ With the application running, drive load against it using the included helper.
 
 ### What to expect
 
-These test plans submit `POST /api/v1/Users` requests with a unique `username` + `email` per request (JMeter uses thread/counter/UUID variables), so each successful request should create a new User.
+These test plans submit `POST /api/v1/Users` requests with a unique `username` + `email` per request (JMeter uses thread/counter/UUID variables) and a fresh `Idempotency-Key` header (`${__UUID}`) per request, so each successful request should create a new User.
 
 - **Minimal test (`test-minimal.jmx`)**
   - **Load shape**: 2 threads \* 5 loops = **10 requests total**

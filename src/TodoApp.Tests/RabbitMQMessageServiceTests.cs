@@ -259,4 +259,35 @@ public class RabbitMQMessageServiceTests
         harness.DeliverReply(props.CorrelationId, "{}");
         await task;
     }
+
+    [Fact]
+    public async Task Published_write_request_carries_the_idempotency_key_header()
+    {
+        var harness = new Harness(rpcTimeoutSeconds: 30);
+
+        var task = harness.Service.PublishMessageRpc(
+            new PingMessage("a"), "some-queue", executeIfTimeout: true, idempotencyKey: "key-123");
+
+        var props = harness.Published.Single().Props;
+        Assert.Equal("key-123", props.Headers[RpcHeaders.IdempotencyKey]);
+
+        harness.DeliverReply(props.CorrelationId, "{}");
+        await task;
+    }
+
+    [Fact]
+    public async Task Published_read_request_omits_the_idempotency_key_header()
+    {
+        var harness = new Harness(rpcTimeoutSeconds: 30);
+
+        // Reads pass no key; the worker's dedup path keys off the header's presence, so it must
+        // not appear on requests that should always execute.
+        var task = harness.Service.PublishMessageRpc(new PingMessage("a"), "some-queue");
+
+        var props = harness.Published.Single().Props;
+        Assert.False(props.Headers.ContainsKey(RpcHeaders.IdempotencyKey));
+
+        harness.DeliverReply(props.CorrelationId, "{}");
+        await task;
+    }
 }

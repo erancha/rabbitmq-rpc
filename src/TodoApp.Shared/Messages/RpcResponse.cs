@@ -42,6 +42,7 @@ public static class RpcErrorKind
     public const string UNKNOWN = "UNKNOWN";
     public const string FATAL = "FATAL";
     public const string TEMPORARY_UNAVAILABLE = "TEMPORARY_UNAVAILABLE";
+    public const string IDEMPOTENCY_CONFLICT = "IDEMPOTENCY_CONFLICT"; // The request reused an idempotency key that first accompanied a different request body.
 }
 
 /// <summary>
@@ -49,6 +50,9 @@ public static class RpcErrorKind
 /// </summary>
 public static class RpcHeaders
 {
-    public const string TimeoutSeconds = "timeout_seconds";
-    public const string ExecuteIfTimeout = "execute_if_timeout";
+    public const string TimeoutSeconds = "timeout_seconds"; // The RPC timeout the request was published with, in seconds.
+    public const string ExecuteIfTimeout = "execute_if_timeout"; // Whether the request should still be executed after it has already timed out.
+    // The idempotency key header — one value at both hops: the HTTP header the caller sends and the
+    // AMQP header the WebApi forwards to the worker. Uses the conventional HTTP spelling.
+    public const string IdempotencyKey = "Idempotency-Key";
 }

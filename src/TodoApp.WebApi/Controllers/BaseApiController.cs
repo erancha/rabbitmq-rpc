@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using TodoApp.Shared.Models;
@@ -7,6 +9,10 @@ namespace TodoApp.WebApi.Controllers;
 
 public abstract class BaseApiController : ControllerBase
 {
+    // The HTTP header a caller may send to identify a write for deduplication; the same value the
+    // worker contract uses, defined once as RpcHeaders.IdempotencyKey.
+    public const string IdempotencyKeyHeader = RpcHeaders.IdempotencyKey;
+
     protected record LocalValidationResult(bool IsValid, string? ErrorMessage = null);
 
     private readonly ILogger<BaseApiController> _logger;
@@ -20,8 +26,8 @@ public abstract class BaseApiController : ControllerBase
     /// Converts a worker RPC response into an HTTP action result.
     /// Success: 200 OK with the Data payload, or an empty body.
     /// Error: maps the RPC error kind to an HTTP status code (404 NOT_FOUND, 400 VALIDATION,
-    /// 503 TEMPORARY_UNAVAILABLE, 500 otherwise) and returns { success: false, errorMessage }
-    /// without exposing the internal error kind to HTTP clients.
+    /// 422 IDEMPOTENCY_CONFLICT, 503 TEMPORARY_UNAVAILABLE, 500 otherwise) and returns
+    /// { success: false, errorMessage } without exposing the internal error kind to HTTP clients.
     /// </summary>
     /// <param name="responseJson">The serialized RpcResponse received from the worker.</param>
     protected IActionResult HandleRpcResponse(string responseJson) =>
@@ -82,9 +88,29 @@ public abstract class BaseApiController : ControllerBase
         {
             RpcErrorKind.NOT_FOUND => StatusCodes.Status404NotFound,
             RpcErrorKind.VALIDATION => StatusCodes.Status400BadRequest,
+            RpcErrorKind.IDEMPOTENCY_CONFLICT => StatusCodes.Status422UnprocessableEntity,
             RpcErrorKind.TEMPORARY_UNAVAILABLE => StatusCodes.Status503ServiceUnavailable,
             _ => StatusCodes.Status500InternalServerError,
         };
+
+    /// <summary>
+    /// Resolves the idempotency key for a write. Uses the caller-supplied Idempotency-Key header
+    /// when present; otherwise derives a stable key by hashing the operation's content (message type
+    /// plus serialized body), so keyless retries and broker redeliveries still deduplicate.
+    ///
+    /// A derived key collapses byte-identical requests into one within the marker retention window —
+    /// intended for a retry, but it cannot tell a retry from a caller deliberately repeating the same
+    /// write. A caller that needs two identical writes kept distinct supplies its own distinct keys.
+    /// </summary>
+    protected string ResolveIdempotencyKey<T>(T message)
+    {
+        var supplied = Request.Headers[IdempotencyKeyHeader].ToString();
+        if (!string.IsNullOrWhiteSpace(supplied))
+            return supplied;
+
+        var content = $"{typeof(T).Name}:{JsonSerializer.Serialize(message)}";
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
+    }
 
     /// <summary>
     /// Returns a 400 Bad Request result carrying the validation error message when

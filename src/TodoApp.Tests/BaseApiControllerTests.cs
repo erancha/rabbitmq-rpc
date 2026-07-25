@@ -1,5 +1,6 @@
 using Xunit;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using TodoApp.Shared.Messages;
@@ -9,23 +10,31 @@ namespace TodoApp.Tests;
 
 /// <summary>
 /// Verifies the WebApi edge of the RPC pipeline: mapping of RPC error kinds to HTTP status
-/// codes and conversion of worker response JSON into HTTP action results.
+/// codes, conversion of worker response JSON into HTTP action results, and resolution of the
+/// idempotency key for write actions (supplied header, else derived from content).
 /// </summary>
 public class BaseApiControllerTests
 {
     private sealed class TestableController : BaseApiController
     {
-        public TestableController() : base(NullLogger<BaseApiController>.Instance) { }
+        public TestableController() : base(NullLogger<BaseApiController>.Instance)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+        }
 
         public IActionResult InvokeHandleRpcResponse(string responseJson) => HandleRpcResponse(responseJson);
         public IActionResult InvokeHandleRpcCreatedResponse(string responseJson, string getActionName) =>
             HandleRpcCreatedResponse(responseJson, getActionName);
         public static int InvokeGetStatusCode(string? kind) => GetStatusCode(kind);
+        public string InvokeResolveIdempotencyKey<T>(T message) => ResolveIdempotencyKey(message);
+
+        public void SetHeader(string name, string value) => HttpContext.Request.Headers[name] = value;
     }
 
     [Theory]
     [InlineData(RpcErrorKind.NOT_FOUND, 404)]
     [InlineData(RpcErrorKind.VALIDATION, 400)]
+    [InlineData(RpcErrorKind.IDEMPOTENCY_CONFLICT, 422)]
     [InlineData(RpcErrorKind.TEMPORARY_UNAVAILABLE, 503)]
     [InlineData(RpcErrorKind.UNKNOWN, 500)]
     [InlineData(RpcErrorKind.FATAL, 500)]
@@ -33,6 +42,41 @@ public class BaseApiControllerTests
     public void Error_kind_maps_to_http_status(string? kind, int expectedStatus)
     {
         Assert.Equal(expectedStatus, TestableController.InvokeGetStatusCode(kind));
+    }
+
+    [Fact]
+    public void Supplied_idempotency_key_takes_precedence_over_content()
+    {
+        var controller = new TestableController();
+        controller.SetHeader(BaseApiController.IdempotencyKeyHeader, "key-abc");
+
+        Assert.Equal("key-abc", controller.InvokeResolveIdempotencyKey(new { title = "x", userId = 5 }));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Absent_or_blank_key_is_derived_and_stable_for_identical_content(string headerValue)
+    {
+        var controller = new TestableController();
+        controller.SetHeader(BaseApiController.IdempotencyKeyHeader, headerValue);
+
+        var first = controller.InvokeResolveIdempotencyKey(new { title = "Buy milk", userId = 5 });
+        var second = controller.InvokeResolveIdempotencyKey(new { title = "Buy milk", userId = 5 });
+
+        Assert.False(string.IsNullOrEmpty(first));
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void Derived_key_differs_for_different_content()
+    {
+        var controller = new TestableController();
+
+        var first = controller.InvokeResolveIdempotencyKey(new { title = "Buy milk", userId = 5 });
+        var second = controller.InvokeResolveIdempotencyKey(new { title = "Call dentist", userId = 5 });
+
+        Assert.NotEqual(first, second);
     }
 
     [Fact]

@@ -27,8 +27,10 @@ public interface IRabbitMQMessageService
     /// <param name="routingKey">Direct-exchange routing key selecting the worker queue</param>
     /// <param name="executeIfTimeout">If true, the worker service will execute the request even if client times out.
     /// Set to true for state-changing operations that should complete regardless of timeout.</param>
+    /// <param name="idempotencyKey">Key identifying the write for deduplication — caller-supplied or
+    /// derived from the request content. Passed for writes; null for reads.</param>
     /// <returns>The response message</returns>
-    Task<string> PublishMessageRpc<T>(T message, string routingKey, bool executeIfTimeout = false);
+    Task<string> PublishMessageRpc<T>(T message, string routingKey, bool executeIfTimeout = false, string? idempotencyKey = null);
 }
 
 /// <summary>
@@ -108,7 +110,7 @@ public class RabbitMQMessageService : IRabbitMQMessageService
         _consumerChannel.BasicConsume(consumer: consumer, queue: _replyQueueName, autoAck: true);
     }
 
-    public async Task<string> PublishMessageRpc<T>(T message, string routingKey, bool executeIfTimeout = false)
+    public async Task<string> PublishMessageRpc<T>(T message, string routingKey, bool executeIfTimeout = false, string? idempotencyKey = null)
     {
         var correlationId = Guid.NewGuid().ToString();
         // Keeps awaiting callers' continuations off the single reply-consumer thread, which
@@ -133,6 +135,8 @@ public class RabbitMQMessageService : IRabbitMQMessageService
                 { RpcHeaders.TimeoutSeconds, _config.RpcTimeoutSeconds },
                 { RpcHeaders.ExecuteIfTimeout, executeIfTimeout }
             };
+            if (idempotencyKey != null)
+                properties.Headers[RpcHeaders.IdempotencyKey] = idempotencyKey;
 
             var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message));
 

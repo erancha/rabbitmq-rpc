@@ -3,8 +3,9 @@
 Every REST call the WebAPI accepts becomes a message: routed through a durable direct exchange to
 a durable queue, processed by one of the Worker Service replicas — the only writer to a minimal
 PostgreSQL schema — and answered on the calling instance's reply queue matched by correlation ID,
-with worker errors returned as typed RPC error responses. The [communication pattern](#communication-pattern)
-below walks through this flow step by step.
+with worker errors returned as typed RPC error responses. Every request takes effect **exactly
+once**, even under client retries or broker redelivery ([Idempotency](#idempotency)). The
+[communication pattern](#communication-pattern) below walks through this flow step by step.
 
 ![Todo App Architecture Diagram](architecture-diagram.svg)
 
@@ -51,7 +52,7 @@ This application uses RabbitMQ's Direct Exchange with RPC (Remote Procedure Call
     2.1. [Binds its queues to these routing keys](../src/TodoApp.WorkerService/Helpers/RabbitMQSetup.cs) and receives relevant messages.
     - The worker runs as multiple Docker `replicas` that all consume from the same queue(s) as **competing consumers**: each message is delivered to **one** replica (load-balanced by RabbitMQ, optionally influenced by prefetch).
 
-    - RabbitMQ does **not** guarantee exactly-once delivery. With acknowledgements, the practical guarantee is **at-least-once**: if a consumer crashes, disconnects, or fails before acking, RabbitMQ may **redeliver** the message to the same or a different consumer, which can result in **duplicate processing**. To achieve end-to-end “exactly once” behavior, handlers must be idempotent and/or perform deduplication at the application/database level.
+    - Each request takes effect **exactly once**. The broker can deliver the same message more than once — a consumer that crashes or disconnects before acking gets it **redelivered** — so [Idempotency](#idempotency) deduplicates the repeat: a redelivered or retried request never writes twice and returns the original result.
 
     2.2. Processes each request and sends back a response to the request's `reply_to` queue, [including the original correlation ID](../src/TodoApp.WorkerService/Services/BaseMessageHandler.cs) (`SendRpcResponse`)
 
@@ -63,7 +64,7 @@ This application uses RabbitMQ's Direct Exchange with RPC (Remote Procedure Call
 
 **Key Concepts**
 
-- **Exchange**: A direct exchange `todo-app-exchange` routes messages based on simple **routing keys**, since this app needs deterministic 1:1 routing (`user` -> users queue, `todo` -> todos queue) rather than broadcast (fanout), pattern-based topics, or header-based routing
+- **Exchange**: A direct exchange `todo-app-exchange` routes each message to one queue by its routing key (`user` -> users queue, `todo` -> todos queue) — the app needs fixed 1:1 routing, not broadcast or pattern matching
 - **Queues**: Two dedicated queues for handling user and todo operations respectively
 - **Reply Queues & Correlation IDs**: All RPC requests from one WebApi instance share a single exclusive reply queue and unique correlation ID to track responses (see [Trade-offs & implementation notes](#trade-offs--implementation-notes-what-to-pay-attention-to))
 
@@ -73,7 +74,30 @@ This application uses RabbitMQ's Direct Exchange with RPC (Remote Procedure Call
 - Requests that fail processing are rejected without requeue and routed through a dead-letter exchange to a durable `dead-letter-queue` ([RabbitMQSetup.cs](../src/TodoApp.WorkerService/Helpers/RabbitMQSetup.cs)) for inspection and replay, instead of being discarded by the broker
 - Error handling with message acknowledgment ([BaseMessageHandler.cs](../src/TodoApp.WorkerService/Services/BaseMessageHandler.cs)): each delivery is settled exactly once — acked after successful processing, nacked to the dead-letter queue on failure — before the RPC reply is published
 - Connection retries with exponential backoff at startup ([Connections.cs](../src/TodoApp.Shared/Configuration/RabbitMQ/Connections.cs)); after startup, RabbitMQ.Client's automatic connection and topology recovery (enabled by default in 6.x) restores the connection, its channels, the named exclusive reply queue, and its consumer if the connection drops mid-run. Requests in flight during an outage are not replayed — their replies are lost, and each pending call completes through the RPC timeout path below.
-- Timeout handling for RPC calls ([RabbitMQMessageService.cs](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs): configurable via `WebApi__RpcTimeoutSeconds`, 5 seconds by default)
+- Timeout handling for RPC calls ([RabbitMQMessageService.cs](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs): configurable via `WebApi__RpcTimeoutSeconds`, 5 seconds by default). The 503 returned on timeout is safe to retry: the retry carries the same idempotency key, so the worker replays the original outcome instead of writing again (see [Idempotency](#idempotency)).
+
+### Idempotency
+
+Every write takes effect exactly once, even though the worker can receive the same request more than
+once — RabbitMQ resends a message when a worker crashes before acknowledging it, and an HTTP caller
+may retry. One mechanism deduplicates both.
+
+- **One key per write, supplied or derived.** A write is identified by its `Idempotency-Key` header,
+  or — when the caller sends none — by a key the WebApi derives from the request's content. The key is
+  the same across an HTTP retry and a broker redelivery, so it names the same request on both. A
+  caller-supplied key wins: a derived key treats two identical writes as one, so a caller that means
+  them as distinct sends its own keys. Reads carry no key.
+- **One transactional marker.** The worker records each write as a row in `ProcessedMessages`, keyed
+  by the idempotency key and committed in the same transaction as the write
+  ([BaseMessageHandler.cs](../src/TodoApp.WorkerService/Services/BaseMessageHandler.cs)) — so a
+  marker's presence proves the write happened. A first-time write just inserts its marker; a
+  duplicate's insert hits the existing key, and the worker reads the marker to replay the original
+  reply instead of writing again, or rejects the request if the same key arrives with a different
+  body. Two replicas racing on a redelivery resolve the same way: one wins, the other replays.
+- **Bounded storage.** Markers matter only during the redelivery/retry window; a background sweep
+  ([ProcessedMessageCleanupService.cs](../src/TodoApp.WorkerService/Services/ProcessedMessageCleanupService.cs))
+  deletes them past their retention age (10 minutes, set in the `Idempotency` config section —
+  appsettings.json or `Idempotency__*` environment variables).
 
 ### Trade-offs & implementation notes (what to pay attention to)
 
@@ -107,29 +131,17 @@ The worker service ensures database availability before processing messages:
 
 ## Threading Model
 
-The application uses a multi-threaded architecture with async/await patterns and thread-safety considerations:
-
 **WebAPI Service:**
 
-- **ASP.NET Core Request Threads**: Each HTTP request is implicitly handled on a thread pool thread
-- **RPC Reply Consumer**: Single dedicated background thread ([RabbitMQMessageService.cs](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs)) listening on the reply queue
-- **Thread-Safe Response Routing**: `ConcurrentDictionary<string, TaskCompletionSource<string>>` maps correlation IDs to pending requests, allowing the single consumer thread to dispatch responses to the correct waiting request thread
-- **Channel Pooling**: `ObjectPool<IModel>` provides thread-safe channel reuse for publishing messages
+- Each HTTP request runs on its own thread-pool thread (ASP.NET Core's default).
+- One background thread consumes the reply queue ([RabbitMQMessageService.cs](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs)). It hands each reply back to the request waiting for it by matching the correlation ID against a `ConcurrentDictionary` of pending requests — the one place the many request threads and that single reply thread meet, so the map has to be concurrent.
+- Publishing borrows a channel from a pool (`ObjectPool<IModel>`) so two requests never write to the same channel at once.
 
 **Worker Service:**
 
-- **One Handler per Queue**: A single `UserMessageHandler` and a single `TodoItemMessageHandler` registered as `IHostedService` ([Program.cs](../src/TodoApp.WorkerService/Program.cs)), each consuming its queue on a dedicated channel
-- **Parallel Message Processing**: Parallelism comes from running multiple worker replicas (see [Scalability notes](#scalability-notes)); within a process, each handler consumes its queue independently
-- **Per-Message DbContext**: Each message handler creates a new scoped `DbContext` instance per message ([UserMessageHandler.cs](../src/TodoApp.WorkerService/Services/UserMessageHandler.cs), [TodoItemMessageHandler.cs](../src/TodoApp.WorkerService/Services/TodoItemMessageHandler.cs)) to avoid thread-safety issues with EF Core
-- **Initialization Synchronization**: `TaskCompletionSource` with `RunContinuationsAsynchronously` ([DbInitializationSignal.cs](../src/TodoApp.WorkerService/Services/DbInitializationSignal.cs)) ensures all message handlers wait for database initialization before processing messages
-
-**Key Thread-Safety Patterns:**
-
-- Async/await throughout for non-blocking I/O operations
-- No shared mutable state between message handlers
-- Thread-safe collections (`ConcurrentDictionary`) for cross-thread communication
-- Object pooling for RabbitMQ channels to prevent concurrent access issues
-- Scoped dependency injection for per-request/per-message isolation
+- One `UserMessageHandler` and one `TodoItemMessageHandler`, each consuming its own queue on its own channel ([Program.cs](../src/TodoApp.WorkerService/Program.cs)). More throughput comes from running more replicas, not more threads per process (see [Scalability notes](#scalability-notes)).
+- Each message is handled with its own `DbContext` from a fresh scope ([UserMessageHandler.cs](../src/TodoApp.WorkerService/Services/UserMessageHandler.cs), [TodoItemMessageHandler.cs](../src/TodoApp.WorkerService/Services/TodoItemMessageHandler.cs)), because one `DbContext` cannot serve two messages at the same time.
+- Handlers hold off consuming until the database is migrated, waiting on [DbInitializationSignal](../src/TodoApp.WorkerService/Services/DbInitializationSignal.cs).
 
 ## Scalability notes
 

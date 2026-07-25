@@ -31,3 +31,10 @@ public sealed class ValidationException : DomainException
     public ValidationException(string message)
         : base(RpcErrorKind.VALIDATION, message) { }
 }
+
+/// <summary>An idempotency key was reused for a request whose body differs from the first.</summary>
+public sealed class IdempotencyConflictException : DomainException
+{
+    public IdempotencyConflictException(string message)
+        : base(RpcErrorKind.IDEMPOTENCY_CONFLICT, message) { }
+}

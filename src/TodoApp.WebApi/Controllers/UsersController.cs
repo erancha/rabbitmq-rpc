@@ -31,12 +31,15 @@ public class UsersController : BaseApiController
         if (localResponse != null)
             return localResponse;
 
+        var idempotencyKey = ResolveIdempotencyKey(message);
+
         try
         {
             var responseJson = await _rabbitMQMessageService.PublishMessageRpc<CreateUserMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.User,
-                executeIfTimeout: true
+                executeIfTimeout: true,
+                idempotencyKey: idempotencyKey
             );
             return HandleRpcCreatedResponse(responseJson, nameof(GetUserById));
         }
@@ -56,12 +59,14 @@ public class UsersController : BaseApiController
             return localResponse;
 
         var message = new UpdateUserMessage { Id = id, Data = data };
+        var idempotencyKey = ResolveIdempotencyKey(message);
         try
         {
             var responseJson = await _rabbitMQMessageService.PublishMessageRpc<UpdateUserMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.User,
-                executeIfTimeout: true
+                executeIfTimeout: true,
+                idempotencyKey: idempotencyKey
             );
             return HandleRpcResponse(responseJson);
         }
@@ -80,13 +85,15 @@ public class UsersController : BaseApiController
         if (localResponse != null)
             return localResponse;
 
+        var message = new DeleteUserMessage(id);
+        var idempotencyKey = ResolveIdempotencyKey(message);
         try
         {
-            var message = new DeleteUserMessage(id);
             var responseJson = await _rabbitMQMessageService.PublishMessageRpc<DeleteUserMessage>(
                 message,
                 RabbitMQShared.RoutingKeys.User,
-                executeIfTimeout: true
+                executeIfTimeout: true,
+                idempotencyKey: idempotencyKey
             );
             return HandleRpcResponse(responseJson);
         }
