@@ -1,4 +1,4 @@
-using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using TodoApp.WebApi.Configuration;
 using Xunit;
 
@@ -14,15 +14,17 @@ public class WebApiConfigTests
     public void RpcTimeoutSeconds_fallback_matches_shipped_appsettings()
     {
         // Test binaries run from src/TodoApp.Tests/bin/<Configuration>/<tfm>.
-        var appsettingsPath = Path.Combine(
-            AppContext.BaseDirectory, "..", "..", "..", "..",
-            "TodoApp.WebApi", "appsettings.json");
+        var webApiDirectory = Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..", "TodoApp.WebApi");
 
-        using var appsettings = JsonDocument.Parse(File.ReadAllText(appsettingsPath));
-        var shipped = appsettings.RootElement
-            .GetProperty("WebApi")
-            .GetProperty("RpcTimeoutSeconds")
-            .GetInt32();
+        // Reading through the configuration provider applies the same parsing the WebApi host
+        // does, so annotations appsettings.json carries for operators cannot break this test.
+        var appsettings = new ConfigurationBuilder()
+            .SetBasePath(webApiDirectory)
+            .AddJsonFile("appsettings.json")
+            .Build();
+        var shipped = int.Parse(appsettings["WebApi:RpcTimeoutSeconds"]
+            ?? throw new InvalidOperationException("appsettings.json omits WebApi:RpcTimeoutSeconds"));
 
         Assert.Equal(shipped, new WebApiConfig().RpcTimeoutSeconds);
     }
