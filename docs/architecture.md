@@ -139,7 +139,7 @@ The worker service ensures database availability before processing messages:
 - Each HTTP request runs on its own thread-pool thread (ASP.NET Core's default).
 - One background thread consumes the reply queue ([RabbitMQMessageService.cs](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs)). It hands each reply back to the request waiting for it by matching the correlation ID against a `ConcurrentDictionary` of pending requests — the one place the many request threads and that single reply thread meet, so the map has to be concurrent.
 - Publishing borrows a channel from a pool (`ObjectPool<IModel>`) so two requests never write to the same channel at once.
-- Publish and reply traffic ride separate TCP connections ([Program.cs](../src/TodoApp.WebApi/Program.cs)): all frames on one connection serialize through its socket, so a shared connection would queue reply deliveries behind bursts of publish frames. Each connection gets its own health check (`rabbitmq-publish`, `rabbitmq-consume`).
+- Publishes go out on one RabbitMQ connection and replies arrive on a second ([Program.cs](../src/TodoApp.WebApi/Program.cs)), so a burst of publishes cannot delay reply deliveries by hogging a shared socket. Each connection has its own health check (`rabbitmq-publish`, `rabbitmq-consume`).
 
 **Worker Service:**
 

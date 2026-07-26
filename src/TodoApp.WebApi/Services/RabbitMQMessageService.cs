@@ -44,9 +44,8 @@ public interface IRabbitMQMessageService
 ///   when the reply arrives or the request times out, so entries for requests the worker will
 ///   never answer cannot accumulate
 /// - A single long-lived consumer on the reply queue dispatches each reply to its pending request
-/// - Publishing borrows short-lived channels from the shared channel pool, while the consumer
-///   runs on a dedicated channel the host supplies from a separate connection, so reply
-///   deliveries never queue behind publish frames on one socket
+/// - Publishing borrows short-lived channels from the shared channel pool; the consumer runs on
+///   a dedicated channel the host supplies from its own connection
 ///
 /// A dropped connection is restored by RabbitMQ.Client's automatic connection and topology
 /// recovery, which re-declares the named reply queue and re-registers its consumer. Replies to

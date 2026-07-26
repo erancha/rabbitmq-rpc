@@ -16,8 +16,7 @@ builder.Services.Configure<RabbitMQShared.Config>(builder.Configuration.GetSecti
 var rabbitMQConfig =
     builder.Configuration.GetSection("RabbitMQ").Get<RabbitMQShared.Config>()
     ?? new RabbitMQShared.Config();
-// Publish and reply traffic ride separate TCP connections: on a shared socket every frame
-// serializes through one connection, so reply deliveries queue behind bursts of publish frames.
+// Separate connections keep reply deliveries from queuing behind publish bursts on a shared socket.
 IConnection publishConnection = RabbitMQShared.Connections.ConnectAndBindExchange(rabbitMQConfig);
 IConnection consumeConnection = RabbitMQShared.Connections.ConnectAndBindExchange(rabbitMQConfig);
 builder.Services.AddSingleton<ObjectPool<IModel>>(_ => RabbitMQChannelPoolFactory.CreateChannelPool(publishConnection));

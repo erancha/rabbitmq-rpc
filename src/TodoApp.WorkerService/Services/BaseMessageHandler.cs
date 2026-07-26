@@ -16,8 +16,8 @@ namespace TodoApp.WorkerService.Services;
 /// Core responsibilities:
 /// - Holds consumption until DbInitializationSignal completes, so no message is processed
 ///   against an unmigrated database
-/// - Prefetches a few messages (prefetch 5) so the next delivery is already local when a
-///   handler finishes, hiding the broker round-trip while keeping work spread across replicas
+/// - Prefetches a few deliveries so the next message is already local when a handler finishes,
+///   while the low prefetch cap keeps work spread across replicas
 /// - Settles every delivery exactly once: acked after processing, nacked to the dead-letter
 ///   exchange on failure, and never re-settled afterwards
 /// - Drops requests whose client-supplied deadline has already passed, unless the request opted
