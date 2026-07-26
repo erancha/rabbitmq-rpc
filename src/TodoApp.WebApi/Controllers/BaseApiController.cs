@@ -13,8 +13,6 @@ public abstract class BaseApiController : ControllerBase
     // worker contract uses, defined once as RpcHeaders.IdempotencyKey.
     public const string IdempotencyKeyHeader = RpcHeaders.IdempotencyKey;
 
-    protected record LocalValidationResult(bool IsValid, string? ErrorMessage = null);
-
     private readonly IRabbitMQMessageService _rabbitMQMessageService;
     private readonly ILogger<BaseApiController> _logger;
 
@@ -141,16 +139,5 @@ public abstract class BaseApiController : ControllerBase
 
         var content = $"{typeof(T).Name}:{JsonSerializer.Serialize(message)}";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
-    }
-
-    /// <summary>
-    /// Returns a 400 ProblemDetails result when controller-local validation failed, or null when
-    /// it passed — null tells the action to proceed and publish the RPC message.
-    /// </summary>
-    protected ActionResult? HandleLocalResponse(LocalValidationResult validationResult)
-    {
-        if (!validationResult.IsValid)
-            return Problem(statusCode: StatusCodes.Status400BadRequest, detail: validationResult.ErrorMessage);
-        return null;
     }
 }

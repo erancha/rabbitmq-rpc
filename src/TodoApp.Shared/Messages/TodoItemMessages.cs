@@ -1,6 +1,14 @@
+using System.ComponentModel.DataAnnotations;
+using TodoApp.Shared.Validation;
+
 namespace TodoApp.Shared.Messages;
 
-public record CreateTodoItemMessage(string Title, string Description, int UserId);
+// MVC reads validation constraints for records from the primary-constructor parameters; attributes
+// targeted at the generated properties make model binding throw.
+public record CreateTodoItemMessage(
+   [Required] string Title,
+   string Description,
+   [Range(1, int.MaxValue)] int UserId);
 
 public sealed class UpdateTodoItemMessage
 {
@@ -10,7 +18,9 @@ public sealed class UpdateTodoItemMessage
 
 public class UpdateTodoItemData
 {
+   [NotWhitespace]
    public string? Title { get; set; }
+
    public string? Description { get; set; }
    public bool? IsCompleted { get; set; }
 }

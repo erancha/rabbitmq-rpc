@@ -39,19 +39,6 @@ public class TodoItemsControllerTests
     }
 
     [Fact]
-    public async Task CreateTodoItem_rejects_a_missing_title_locally_with_a_problem_body()
-    {
-        var (controller, service) = CreateController("{\"Success\":true}");
-
-        var result = await controller.CreateTodoItem(new CreateTodoItemMessage("", "d", 5));
-
-        Assert.Null(service.CapturedRoutingKey); // rejected before any publish
-        var objectResult = Assert.IsType<ObjectResult>(result.Result);
-        Assert.Equal(400, objectResult.StatusCode);
-        Assert.Equal("Title cannot be empty", Assert.IsType<ProblemDetails>(objectResult.Value).Detail);
-    }
-
-    [Fact]
     public async Task UpdateTodoItem_writes_and_returns_an_empty_200()
     {
         var (controller, service) = CreateController("{\"Data\":{},\"Success\":true}");

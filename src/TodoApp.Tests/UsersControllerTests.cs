@@ -69,19 +69,6 @@ public class UsersControllerTests
     }
 
     [Fact]
-    public async Task CreateUser_rejects_an_invalid_email_locally_with_a_problem_body()
-    {
-        var (controller, service) = CreateController("{\"Success\":true}");
-
-        var result = await controller.CreateUser(new CreateUserMessage("alice", "not-an-email"));
-
-        Assert.Null(service.CapturedRoutingKey); // rejected before any publish
-        var objectResult = Assert.IsType<ObjectResult>(result.Result);
-        Assert.Equal(400, objectResult.StatusCode);
-        Assert.Equal("Invalid email format", Assert.IsType<ProblemDetails>(objectResult.Value).Detail);
-    }
-
-    [Fact]
     public async Task UpdateUser_writes_and_returns_an_empty_200()
     {
         var (controller, service) = CreateController("{\"Data\":{},\"Success\":true}");

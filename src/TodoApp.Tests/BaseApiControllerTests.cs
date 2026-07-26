@@ -44,9 +44,6 @@ public class BaseApiControllerTests
         public Task<ActionResult> InvokeBareExecuteRpc<TMessage>(
             TMessage message, string routingKey, bool executeIfTimeout) =>
             ExecuteRpc(message, routingKey, executeIfTimeout);
-
-        public ActionResult? InvokeHandleLocalResponse(bool isValid, string? errorMessage = null) =>
-            HandleLocalResponse(new LocalValidationResult(isValid, errorMessage));
     }
 
     [Theory]
@@ -295,24 +292,6 @@ public class BaseApiControllerTests
 
         Assert.False(service.CapturedExecuteIfTimeout);
         Assert.Null(service.CapturedIdempotencyKey);
-    }
-
-    [Fact]
-    public void Failed_local_validation_returns_a_400_problem()
-    {
-        var controller = new TestableController();
-
-        var result = controller.InvokeHandleLocalResponse(false, "Invalid email format");
-
-        var objectResult = Assert.IsType<ObjectResult>(result);
-        Assert.Equal(400, objectResult.StatusCode);
-        Assert.Equal("Invalid email format", Assert.IsType<ProblemDetails>(objectResult.Value).Detail);
-    }
-
-    [Fact]
-    public void Passing_local_validation_returns_null()
-    {
-        Assert.Null(new TestableController().InvokeHandleLocalResponse(true));
     }
 
     [Fact]
