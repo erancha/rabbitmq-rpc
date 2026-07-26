@@ -16,7 +16,8 @@ namespace TodoApp.WorkerService.Services;
 /// Core responsibilities:
 /// - Holds consumption until DbInitializationSignal completes, so no message is processed
 ///   against an unmigrated database
-/// - Draws one message at a time (prefetch 1), so replicas compete for work by availability
+/// - Prefetches a few messages (prefetch 5) so the next delivery is already local when a
+///   handler finishes, hiding the broker round-trip while keeping work spread across replicas
 /// - Settles every delivery exactly once: acked after processing, nacked to the dead-letter
 ///   exchange on failure, and never re-settled afterwards
 /// - Drops requests whose client-supplied deadline has already passed, unless the request opted
@@ -55,7 +56,7 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
         );
         await _dbInitializationSignal.Initialization;
         _logger.LogInformation("Starting to consume messages from {_queueName}", _queueName);
-        _channel.BasicQos(prefetchSize: 0, prefetchCount: 1, global: false);
+        _channel.BasicQos(prefetchSize: 0, prefetchCount: 5, global: false);
         var consumer = new EventingBasicConsumer(_channel);
         _channel.BasicConsume(queue: _queueName, autoAck: false, consumer: consumer);
 

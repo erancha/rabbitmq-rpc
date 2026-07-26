@@ -139,6 +139,7 @@ The worker service ensures database availability before processing messages:
 - Each HTTP request runs on its own thread-pool thread (ASP.NET Core's default).
 - One background thread consumes the reply queue ([RabbitMQMessageService.cs](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs)). It hands each reply back to the request waiting for it by matching the correlation ID against a `ConcurrentDictionary` of pending requests — the one place the many request threads and that single reply thread meet, so the map has to be concurrent.
 - Publishing borrows a channel from a pool (`ObjectPool<IModel>`) so two requests never write to the same channel at once.
+- Publish and reply traffic ride separate TCP connections ([Program.cs](../src/TodoApp.WebApi/Program.cs)): all frames on one connection serialize through its socket, so a shared connection would queue reply deliveries behind bursts of publish frames. Each connection gets its own health check (`rabbitmq-publish`, `rabbitmq-consume`).
 
 **Worker Service:**
 
@@ -152,7 +153,8 @@ The worker scales horizontally: the compose files set `services.worker.deploy.re
 local compose reads it from the `WORKER_REPLICAS` environment variable), and every replica
 consumes the same durable queues as a competing consumer, so RabbitMQ load-balances messages
 across replicas. Raising the replica count is the scaling lever; each handler consumes with
-`prefetchCount: 1`, so a replica is only handed a message when it is free.
+`prefetchCount: 5`, so a replica keeps a few deliveries staged locally and does not wait a broker
+round-trip between messages, while the low cap keeps work spread across replicas.
 [`scripts/optimize-replicas-count.sh`](../scripts/optimize-replicas-count.sh) searches for the
 best count for the host machine.
 

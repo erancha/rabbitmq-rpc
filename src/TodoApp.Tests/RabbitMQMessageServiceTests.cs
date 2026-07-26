@@ -41,13 +41,16 @@ public class RabbitMQMessageServiceTests
     }
 
     /// <summary>
-    /// Builds a RabbitMQMessageService on top of a mocked channel pool, capturing the reply
-    /// consumer the service registers and every message it publishes.
+    /// Builds a RabbitMQMessageService on top of a mocked channel pool and a separate mocked
+    /// consumer channel, capturing the reply consumer the service registers and every message it
+    /// publishes. The two mocks mirror production wiring — publishes borrow pooled channels,
+    /// consuming happens on the dedicated channel — so a test fails if the service crosses them.
     /// </summary>
     private sealed class Harness
     {
         public RabbitMQMessageService Service { get; }
         public Mock<IModel> Channel { get; }
+        public Mock<IModel> ConsumerChannel { get; }
         public EventingBasicConsumer ReplyConsumer { get; private set; } = null!;
         public List<(string Exchange, string RoutingKey, IBasicProperties Props, byte[] Body)> Published { get; } = new();
 
@@ -64,6 +67,17 @@ public class RabbitMQMessageServiceTests
             });
 
             channel
+                .Setup(c => c.BasicPublish(
+                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(),
+                    It.IsAny<IBasicProperties>(), It.IsAny<ReadOnlyMemory<byte>>()))
+                .Callback((string exchange, string routingKey, bool mandatory,
+                    IBasicProperties props, ReadOnlyMemory<byte> body) =>
+                    Published.Add((exchange, routingKey, props, body.ToArray())));
+
+            var consumerChannel = new Mock<IModel>();
+            ConsumerChannel = consumerChannel;
+
+            consumerChannel
                 .Setup(c => c.BasicConsume(
                     It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<string>(), It.IsAny<bool>(),
                     It.IsAny<bool>(), It.IsAny<IDictionary<string, object>>(), It.IsAny<IBasicConsumer>()))
@@ -72,19 +86,12 @@ public class RabbitMQMessageServiceTests
                     ReplyConsumer = (EventingBasicConsumer)consumer)
                 .Returns("consumer-tag");
 
-            channel
-                .Setup(c => c.BasicPublish(
-                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(),
-                    It.IsAny<IBasicProperties>(), It.IsAny<ReadOnlyMemory<byte>>()))
-                .Callback((string exchange, string routingKey, bool mandatory,
-                    IBasicProperties props, ReadOnlyMemory<byte> body) =>
-                    Published.Add((exchange, routingKey, props, body.ToArray())));
-
             var pool = new Mock<ObjectPool<IModel>>();
             pool.Setup(p => p.Get()).Returns(channel.Object);
 
             Service = new RabbitMQMessageService(
                 pool.Object,
+                consumerChannel.Object,
                 logger ?? NullLogger<RabbitMQMessageService>.Instance,
                 Options.Create(new WebApiConfig { RpcTimeoutSeconds = rpcTimeoutSeconds }));
         }
@@ -106,7 +113,7 @@ public class RabbitMQMessageServiceTests
 
         // Pending requests live only in this instance's memory, so a reply queue that outlived
         // the instance could never deliver to anyone; the broker must clean it up on disconnect.
-        harness.Channel.Verify(c => c.QueueDeclare(
+        harness.ConsumerChannel.Verify(c => c.QueueDeclare(
             $"webapi-replies-{Environment.MachineName}", false, true, true,
             It.IsAny<IDictionary<string, object>>()), Times.Once);
     }
