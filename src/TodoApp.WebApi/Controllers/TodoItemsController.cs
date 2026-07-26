@@ -1,7 +1,4 @@
-using System.Text;
-using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
-using RabbitMQ.Client;
 using TodoApp.Shared.Messages;
 using TodoApp.Shared.Models;
 using TodoApp.WebApi.Services;
@@ -13,146 +10,84 @@ namespace TodoApp.WebApi.Controllers;
 [Route("api/v1/[controller]")]
 public class TodoItemsController : BaseApiController
 {
-    private readonly IRabbitMQMessageService _rabbitMQMessageService;
-    private readonly ILogger<TodoItemsController> _logger;
-
-    public TodoItemsController(
-        IRabbitMQMessageService messageService,
-        ILogger<TodoItemsController> logger
-    )
-        : base(logger)
+    public TodoItemsController(IRabbitMQMessageService messageService, ILogger<TodoItemsController> logger)
+        : base(messageService, logger)
     {
-        _rabbitMQMessageService = messageService;
-        _logger = logger;
     }
 
     [HttpPost]
     public async Task<IActionResult> CreateTodoItem([FromBody] CreateTodoItemMessage message)
     {
-        var validation = ValidateCreateTodoItem(message);
-        var localResponse = HandleLocalResponse(validation);
+        var localResponse = HandleLocalResponse(ValidateCreateTodoItem(message));
         if (localResponse != null)
             return localResponse;
 
-        var idempotencyKey = ResolveIdempotencyKey(message);
-
-        try
-        {
-            var result = await _rabbitMQMessageService.PublishMessageRpc<CreateTodoItemMessage>(
-                message,
-                RabbitMQShared.RoutingKeys.Todo,
-                executeIfTimeout: true,
-                idempotencyKey: idempotencyKey
-            );
-            return HandleRpcCreatedResponse(result, nameof(GetTodoItemById));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error publishing create todo item message");
-            return StatusCode(500, "Error processing request");
-        }
+        return await ExecuteRpc(
+            message,
+            RabbitMQShared.RoutingKeys.Todo,
+            executeIfTimeout: true,
+            onSuccess: json => HandleRpcCreatedResponse(json, nameof(GetTodoItemById))
+        );
     }
 
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateTodoItem(int id, [FromBody] UpdateTodoItemData data)
     {
-        var validation = ValidateUpdateTodoItem(id, data);
-        var localResponse = HandleLocalResponse(validation);
+        var localResponse = HandleLocalResponse(ValidateUpdateTodoItem(id, data));
         if (localResponse != null)
             return localResponse;
 
-        var message = new UpdateTodoItemMessage { Id = id, Data = data };
-        var idempotencyKey = ResolveIdempotencyKey(message);
-        try
-        {
-            var result = await _rabbitMQMessageService.PublishMessageRpc<UpdateTodoItemMessage>(
-                message,
-                RabbitMQShared.RoutingKeys.Todo,
-                executeIfTimeout: true,
-                idempotencyKey: idempotencyKey
-            );
-            return HandleRpcResponse(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error publishing update todo item message");
-            return StatusCode(500, "Error processing request");
-        }
+        return await ExecuteRpc(
+            new UpdateTodoItemMessage { Id = id, Data = data },
+            RabbitMQShared.RoutingKeys.Todo,
+            executeIfTimeout: true,
+            onSuccess: HandleRpcResponse
+        );
     }
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteTodoItem(int id)
     {
-        var validation = ValidateDeleteTodoItem(id);
-        var localResponse = HandleLocalResponse(validation);
+        var localResponse = HandleLocalResponse(ValidateDeleteTodoItem(id));
         if (localResponse != null)
             return localResponse;
 
-        var message = new DeleteTodoItemMessage(id);
-        var idempotencyKey = ResolveIdempotencyKey(message);
-        try
-        {
-            var result = await _rabbitMQMessageService.PublishMessageRpc<DeleteTodoItemMessage>(
-                message,
-                RabbitMQShared.RoutingKeys.Todo,
-                executeIfTimeout: true,
-                idempotencyKey: idempotencyKey
-            );
-            return HandleRpcResponse(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error publishing delete todo item message");
-            return StatusCode(500, "Error processing request");
-        }
+        return await ExecuteRpc(
+            new DeleteTodoItemMessage(id),
+            RabbitMQShared.RoutingKeys.Todo,
+            executeIfTimeout: true,
+            onSuccess: HandleRpcResponse
+        );
     }
 
     [HttpGet("{id}")]
     public async Task<IActionResult> GetTodoItemById(int id)
     {
-        var validation = ValidateGetTodoItem(id);
-        var localResponse = HandleLocalResponse(validation);
+        var localResponse = HandleLocalResponse(ValidateGetTodoItem(id));
         if (localResponse != null)
             return localResponse;
 
-        try
-        {
-            var message = new GetTodoItemByIdMessage(id);
-            var result = await _rabbitMQMessageService.PublishMessageRpc<GetTodoItemByIdMessage>(
-                message,
-                RabbitMQShared.RoutingKeys.Todo
-            );
-            return HandleRpcResponse(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error publishing get todo item by id message");
-            return StatusCode(500, "Error processing request");
-        }
+        return await ExecuteRpc(
+            new GetTodoItemByIdMessage(id),
+            RabbitMQShared.RoutingKeys.Todo,
+            executeIfTimeout: false,
+            onSuccess: HandleRpcResponse
+        );
     }
 
     [HttpGet("user/{userId}")]
     public async Task<IActionResult> GetTodosByUserId(int userId)
     {
-        var validation = ValidateGetTodosByUserId(userId);
-        var localResponse = HandleLocalResponse(validation);
+        var localResponse = HandleLocalResponse(ValidateGetTodosByUserId(userId));
         if (localResponse != null)
             return localResponse;
 
-        try
-        {
-            var message = new GetTodosByUserIdMessage(userId);
-            var result = await _rabbitMQMessageService.PublishMessageRpc<GetTodosByUserIdMessage>(
-                message,
-                RabbitMQShared.RoutingKeys.Todo
-            );
-            return HandleRpcResponse(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error publishing get todos by user id message");
-            return StatusCode(500, "Error processing request");
-        }
+        return await ExecuteRpc(
+            new GetTodosByUserIdMessage(userId),
+            RabbitMQShared.RoutingKeys.Todo,
+            executeIfTimeout: false,
+            onSuccess: HandleRpcResponse
+        );
     }
 
     private LocalValidationResult ValidateCreateTodoItem(CreateTodoItemMessage message)

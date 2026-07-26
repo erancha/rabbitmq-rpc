@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using TodoApp.Shared.Models;
 using TodoApp.Shared.Messages;
+using TodoApp.WebApi.Services;
 
 namespace TodoApp.WebApi.Controllers;
 
@@ -15,11 +16,48 @@ public abstract class BaseApiController : ControllerBase
 
     protected record LocalValidationResult(bool IsValid, string? ErrorMessage = null);
 
+    private readonly IRabbitMQMessageService _rabbitMQMessageService;
     private readonly ILogger<BaseApiController> _logger;
 
-    protected BaseApiController(ILogger<BaseApiController> logger)
+    protected BaseApiController(IRabbitMQMessageService rabbitMQMessageService, ILogger<BaseApiController> logger)
     {
+        _rabbitMQMessageService = rabbitMQMessageService;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Shared publish-and-handle pipeline for the controller actions: publishes the RPC message to
+    /// the worker, turns the worker's response into an HTTP result by calling onSuccess, and maps any
+    /// publish failure to a 500. An action supplies only its message, routing key, and onSuccess.
+    ///
+    /// executeIfTimeout marks a state-changing write: writes carry it true and are deduplicated
+    /// under an idempotency key resolved here (caller header, else derived from content); reads pass
+    /// it false and carry no key. Response-shape errors are handled inside onSuccess, so the catch
+    /// here covers only the publish itself.
+    /// </summary>
+    protected async Task<IActionResult> ExecuteRpc<TMessage>(
+        TMessage message,
+        string routingKey,
+        bool executeIfTimeout,
+        Func<string, IActionResult> onSuccess)
+    {
+        var idempotencyKey = executeIfTimeout ? ResolveIdempotencyKey(message) : null;
+
+        try
+        {
+            var responseJson = await _rabbitMQMessageService.PublishMessageRpc<TMessage>(
+                message,
+                routingKey,
+                executeIfTimeout: executeIfTimeout,
+                idempotencyKey: idempotencyKey
+            );
+            return onSuccess(responseJson);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error publishing {MessageType} message", typeof(TMessage).Name);
+            return StatusCode(500, "Error processing request");
+        }
     }
 
     /// <summary>
@@ -55,8 +93,8 @@ public abstract class BaseApiController : ControllerBase
 
     /// <summary>
     /// Shared RPC response pipeline: parses the envelope, maps worker errors to HTTP status
-    /// codes without exposing the internal error kind, and delegates successful envelopes to
-    /// the caller's result factory. Any parsing or factory failure becomes a 500.
+    /// codes without exposing the internal error kind, and passes a successful envelope's root
+    /// element to onSuccess to build the result. Any parsing or onSuccess failure becomes a 500.
     /// </summary>
     private IActionResult HandleRpcResponse(string responseJson, Func<JsonElement, IActionResult> onSuccess)
     {

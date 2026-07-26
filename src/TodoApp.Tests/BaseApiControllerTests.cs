@@ -5,19 +5,52 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using TodoApp.Shared.Messages;
 using TodoApp.WebApi.Controllers;
+using TodoApp.WebApi.Services;
 
 namespace TodoApp.Tests;
 
 /// <summary>
 /// Verifies the WebApi edge of the RPC pipeline: mapping of RPC error kinds to HTTP status
-/// codes, conversion of worker response JSON into HTTP action results, and resolution of the
-/// idempotency key for write actions (supplied header, else derived from content).
+/// codes, conversion of worker response JSON into HTTP action results, resolution of the
+/// idempotency key for write actions (supplied header, else derived from content), and the
+/// shared publish-and-handle pipeline (ExecuteRpc) that owns publish, response handling, and
+/// the catch-all 500 for every controller action.
 /// </summary>
 public class BaseApiControllerTests
 {
+    /// <summary>
+    /// Records the arguments a controller passes to the RPC client and returns a canned response,
+    /// or throws to exercise the publish-failure path, without touching a real broker.
+    /// </summary>
+    private sealed class FakeMessageService : IRabbitMQMessageService
+    {
+        public string Response = "{\"Success\":true}";
+        public Exception? PublishFailure;
+
+        public string? CapturedRoutingKey;
+        public bool CapturedExecuteIfTimeout;
+        public string? CapturedIdempotencyKey;
+
+        public Task<string> PublishMessageRpc<T>(
+            T message, string routingKey, bool executeIfTimeout = false, string? idempotencyKey = null)
+        {
+            CapturedRoutingKey = routingKey;
+            CapturedExecuteIfTimeout = executeIfTimeout;
+            CapturedIdempotencyKey = idempotencyKey;
+
+            if (PublishFailure != null)
+                throw PublishFailure;
+
+            return Task.FromResult(Response);
+        }
+    }
+
     private sealed class TestableController : BaseApiController
     {
-        public TestableController() : base(NullLogger<BaseApiController>.Instance)
+        public TestableController() : this(new FakeMessageService()) { }
+
+        public TestableController(IRabbitMQMessageService messageService)
+            : base(messageService, NullLogger<BaseApiController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
         }
@@ -27,6 +60,10 @@ public class BaseApiControllerTests
             HandleRpcCreatedResponse(responseJson, getActionName);
         public static int InvokeGetStatusCode(string? kind) => GetStatusCode(kind);
         public string InvokeResolveIdempotencyKey<T>(T message) => ResolveIdempotencyKey(message);
+
+        public Task<IActionResult> InvokeExecuteRpc<TMessage>(
+            TMessage message, string routingKey, bool executeIfTimeout, Func<string, IActionResult> onSuccess) =>
+            ExecuteRpc(message, routingKey, executeIfTimeout, onSuccess);
 
         public void SetHeader(string name, string value) => HttpContext.Request.Headers[name] = value;
     }
@@ -153,5 +190,62 @@ public class BaseApiControllerTests
 
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(500, objectResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task ExecuteRpc_passes_the_worker_response_to_onSuccess()
+    {
+        var service = new FakeMessageService { Response = "{\"Success\":true,\"Data\":{\"Username\":\"alice\"}}" };
+        var controller = new TestableController(service);
+
+        var result = await controller.InvokeExecuteRpc(
+            new { name = "alice" }, "user", executeIfTimeout: false,
+            onSuccess: controller.InvokeHandleRpcResponse);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.Contains("alice", JsonSerializer.Serialize(okResult.Value));
+        Assert.Equal("user", service.CapturedRoutingKey);
+    }
+
+    [Fact]
+    public async Task ExecuteRpc_maps_a_publish_failure_to_500()
+    {
+        var service = new FakeMessageService { PublishFailure = new InvalidOperationException("broker down") };
+        var controller = new TestableController(service);
+
+        var result = await controller.InvokeExecuteRpc(
+            new { name = "alice" }, "user", executeIfTimeout: false,
+            onSuccess: controller.InvokeHandleRpcResponse);
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, objectResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task ExecuteRpc_derives_an_idempotency_key_for_writes()
+    {
+        var service = new FakeMessageService();
+        var controller = new TestableController(service);
+
+        await controller.InvokeExecuteRpc(
+            new { title = "Buy milk" }, "todo", executeIfTimeout: true,
+            onSuccess: controller.InvokeHandleRpcResponse);
+
+        Assert.True(service.CapturedExecuteIfTimeout);
+        Assert.False(string.IsNullOrEmpty(service.CapturedIdempotencyKey));
+    }
+
+    [Fact]
+    public async Task ExecuteRpc_sends_no_idempotency_key_for_reads()
+    {
+        var service = new FakeMessageService();
+        var controller = new TestableController(service);
+
+        await controller.InvokeExecuteRpc(
+            new { id = 5 }, "todo", executeIfTimeout: false,
+            onSuccess: controller.InvokeHandleRpcResponse);
+
+        Assert.False(service.CapturedExecuteIfTimeout);
+        Assert.Null(service.CapturedIdempotencyKey);
     }
 }

@@ -1,7 +1,4 @@
-using System.Text;
-using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
-using RabbitMQ.Client;
 using TodoApp.Shared.Messages;
 using TodoApp.Shared.Models;
 using TodoApp.WebApi.Services;
@@ -13,138 +10,78 @@ namespace TodoApp.WebApi.Controllers;
 [Route("api/v1/[controller]")]
 public class UsersController : BaseApiController
 {
-    private readonly IRabbitMQMessageService _rabbitMQMessageService;
-    private readonly ILogger<UsersController> _logger;
-
     public UsersController(IRabbitMQMessageService messageService, ILogger<UsersController> logger)
-        : base(logger)
+        : base(messageService, logger)
     {
-        _rabbitMQMessageService = messageService;
-        _logger = logger;
     }
 
     [HttpPost]
     public async Task<IActionResult> CreateUser([FromBody] CreateUserMessage message)
     {
-        var validation = ValidateCreateUser(message);
-        var localResponse = HandleLocalResponse(validation);
+        var localResponse = HandleLocalResponse(ValidateCreateUser(message));
         if (localResponse != null)
             return localResponse;
 
-        var idempotencyKey = ResolveIdempotencyKey(message);
-
-        try
-        {
-            var responseJson = await _rabbitMQMessageService.PublishMessageRpc<CreateUserMessage>(
-                message,
-                RabbitMQShared.RoutingKeys.User,
-                executeIfTimeout: true,
-                idempotencyKey: idempotencyKey
-            );
-            return HandleRpcCreatedResponse(responseJson, nameof(GetUserById));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error publishing create user message");
-            return StatusCode(500, "Error processing request");
-        }
+        return await ExecuteRpc(
+            message,
+            RabbitMQShared.RoutingKeys.User,
+            executeIfTimeout: true,
+            onSuccess: json => HandleRpcCreatedResponse(json, nameof(GetUserById))
+        );
     }
 
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateUser(int id, [FromBody] UpdateUserData data)
     {
-        var validation = ValidateUpdateUser(id, data);
-        var localResponse = HandleLocalResponse(validation);
+        var localResponse = HandleLocalResponse(ValidateUpdateUser(id, data));
         if (localResponse != null)
             return localResponse;
 
-        var message = new UpdateUserMessage { Id = id, Data = data };
-        var idempotencyKey = ResolveIdempotencyKey(message);
-        try
-        {
-            var responseJson = await _rabbitMQMessageService.PublishMessageRpc<UpdateUserMessage>(
-                message,
-                RabbitMQShared.RoutingKeys.User,
-                executeIfTimeout: true,
-                idempotencyKey: idempotencyKey
-            );
-            return HandleRpcResponse(responseJson);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error publishing update user message");
-            return StatusCode(500, "Error processing request");
-        }
+        return await ExecuteRpc(
+            new UpdateUserMessage { Id = id, Data = data },
+            RabbitMQShared.RoutingKeys.User,
+            executeIfTimeout: true,
+            onSuccess: HandleRpcResponse
+        );
     }
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteUser(int id)
     {
-        var validation = ValidateDeleteUser(id);
-        var localResponse = HandleLocalResponse(validation);
+        var localResponse = HandleLocalResponse(ValidateDeleteUser(id));
         if (localResponse != null)
             return localResponse;
 
-        var message = new DeleteUserMessage(id);
-        var idempotencyKey = ResolveIdempotencyKey(message);
-        try
-        {
-            var responseJson = await _rabbitMQMessageService.PublishMessageRpc<DeleteUserMessage>(
-                message,
-                RabbitMQShared.RoutingKeys.User,
-                executeIfTimeout: true,
-                idempotencyKey: idempotencyKey
-            );
-            return HandleRpcResponse(responseJson);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error publishing delete user message");
-            return StatusCode(500, "Error processing request");
-        }
+        return await ExecuteRpc(
+            new DeleteUserMessage(id),
+            RabbitMQShared.RoutingKeys.User,
+            executeIfTimeout: true,
+            onSuccess: HandleRpcResponse
+        );
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAllUsers()
-    {
-        try
-        {
-            var message = new GetAllUsersMessage();
-            var responseJson = await _rabbitMQMessageService.PublishMessageRpc<GetAllUsersMessage>(
-                message,
-                RabbitMQShared.RoutingKeys.User
-            );
-            return HandleRpcResponse(responseJson);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error publishing get all users message");
-            return StatusCode(500, "Error processing request");
-        }
-    }
+    public async Task<IActionResult> GetAllUsers() =>
+        await ExecuteRpc(
+            new GetAllUsersMessage(),
+            RabbitMQShared.RoutingKeys.User,
+            executeIfTimeout: false,
+            onSuccess: HandleRpcResponse
+        );
 
     [HttpGet("{id}")]
     public async Task<IActionResult> GetUserById(int id)
     {
-        var validation = ValidateGetUser(id);
-        var localResponse = HandleLocalResponse(validation);
+        var localResponse = HandleLocalResponse(ValidateGetUser(id));
         if (localResponse != null)
             return localResponse;
 
-        try
-        {
-            var message = new GetUserByIdMessage(id);
-            var responseJson = await _rabbitMQMessageService.PublishMessageRpc<GetUserByIdMessage>(
-                message,
-                RabbitMQShared.RoutingKeys.User
-            );
-            return HandleRpcResponse(responseJson);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error publishing get user by id message");
-            return StatusCode(500, "Error processing request");
-        }
+        return await ExecuteRpc(
+            new GetUserByIdMessage(id),
+            RabbitMQShared.RoutingKeys.User,
+            executeIfTimeout: false,
+            onSuccess: HandleRpcResponse
+        );
     }
 
     private LocalValidationResult ValidateCreateUser(CreateUserMessage message)
