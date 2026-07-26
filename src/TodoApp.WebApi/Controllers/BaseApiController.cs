@@ -2,7 +2,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
-using TodoApp.Shared.Models;
 using TodoApp.Shared.Messages;
 using TodoApp.WebApi.Services;
 
@@ -25,103 +24,97 @@ public abstract class BaseApiController : ControllerBase
         _logger = logger;
     }
 
+    // Reads worker transport JSON. Web defaults match the transport's PascalCase properties
+    // case-insensitively, so the internal wire format needs no change.
+    private static readonly JsonSerializerOptions TransportJsonOptions = new(JsonSerializerDefaults.Web);
+
     /// <summary>
-    /// Shared publish-and-handle pipeline for the controller actions: publishes the RPC message to
-    /// the worker, turns the worker's response into an HTTP result by calling onSuccess, and maps any
-    /// publish failure to a 500. An action supplies only its message, routing key, and onSuccess.
+    /// Publishes the RPC message and converts the worker's typed reply into an HTTP result.
+    /// Success hands the deserialized payload to onSuccess (default: 200 OK with the payload);
+    /// worker errors map their kind to an HTTP status carrying a ProblemDetails body. A success
+    /// reply without its payload violates the worker contract and surfaces as a 500.
     ///
     /// executeIfTimeout marks a state-changing write: writes carry it true and are deduplicated
-    /// under an idempotency key resolved here (caller header, else derived from content); reads pass
-    /// it false and carry no key. Response-shape errors are handled inside onSuccess, so the catch
-    /// here covers only the publish itself.
+    /// under an idempotency key resolved here (caller header, else derived from content); reads
+    /// pass it false and carry no key.
     /// </summary>
-    protected async Task<IActionResult> ExecuteRpc<TMessage>(
+    protected Task<ActionResult> ExecuteRpc<TMessage, TData>(
         TMessage message,
         string routingKey,
         bool executeIfTimeout,
-        Func<string, IActionResult> onSuccess)
+        Func<TData, ActionResult>? onSuccess = null)
+        where TData : class =>
+        ExecuteRpcCore(message, routingKey, executeIfTimeout, responseJson =>
+        {
+            var rpc = DeserializeReply<RpcResponse<TData>>(responseJson);
+            if (!rpc.Success)
+                return RpcErrorResult(rpc.Error);
+
+            var data = rpc.Data ?? throw new JsonException(
+                $"Success reply carried no {typeof(TData).Name} payload");
+
+            return onSuccess != null ? onSuccess(data) : Ok(data);
+        });
+
+    /// <summary>
+    /// Variant for actions whose success carries no payload (updates and deletes): returns an
+    /// empty 200 on success and maps worker errors exactly like the typed overload.
+    /// </summary>
+    protected Task<ActionResult> ExecuteRpc<TMessage>(
+        TMessage message,
+        string routingKey,
+        bool executeIfTimeout) =>
+        ExecuteRpcCore(message, routingKey, executeIfTimeout, responseJson =>
+        {
+            var rpc = DeserializeReply<RpcResponse>(responseJson);
+            return rpc.Success ? Ok() : RpcErrorResult(rpc.Error);
+        });
+
+    /// <summary>
+    /// Shared publish skeleton: resolves the idempotency key for writes, publishes, and hands the
+    /// raw reply to onReply. Any failure — publish, deserialization, or a contract violation
+    /// thrown by onReply — becomes a 500 ProblemDetails.
+    /// </summary>
+    private async Task<ActionResult> ExecuteRpcCore<TMessage>(
+        TMessage message,
+        string routingKey,
+        bool executeIfTimeout,
+        Func<string, ActionResult> onReply)
     {
         var idempotencyKey = executeIfTimeout ? ResolveIdempotencyKey(message) : null;
 
         try
         {
-            var responseJson = await _rabbitMQMessageService.PublishMessageRpc<TMessage>(
+            var responseJson = await _rabbitMQMessageService.PublishMessageRpc(
                 message,
                 routingKey,
                 executeIfTimeout: executeIfTimeout,
                 idempotencyKey: idempotencyKey
             );
-            return onSuccess(responseJson);
+            return onReply(responseJson);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error publishing {MessageType} message", typeof(TMessage).Name);
-            return StatusCode(500, "Error processing request");
+            _logger.LogError(ex, "Error executing {MessageType} RPC", typeof(TMessage).Name);
+            return Problem(statusCode: StatusCodes.Status500InternalServerError, detail: "Error processing request");
         }
     }
 
-    /// <summary>
-    /// Converts a worker RPC response into an HTTP action result.
-    /// Success: 200 OK with the Data payload, or an empty body.
-    /// Error: maps the RPC error kind to an HTTP status code (404 NOT_FOUND, 400 VALIDATION,
-    /// 422 IDEMPOTENCY_CONFLICT, 503 TEMPORARY_UNAVAILABLE, 500 otherwise) and returns
-    /// { success: false, errorMessage } without exposing the internal error kind to HTTP clients.
-    /// </summary>
-    /// <param name="responseJson">The serialized RpcResponse received from the worker.</param>
-    protected IActionResult HandleRpcResponse(string responseJson) =>
-        HandleRpcResponse(responseJson, root =>
-            root.TryGetProperty("Data", out var dataElement)
-                ? Ok(dataElement.Deserialize<object>())
-                : Ok());
+    private static T DeserializeReply<T>(string responseJson) =>
+        JsonSerializer.Deserialize<T>(responseJson, TransportJsonOptions)
+            ?? throw new JsonException("Worker reply deserialized to null");
 
     /// <summary>
-    /// Converts a worker RPC response to a creation into an HTTP action result.
-    /// Success: 201 Created with the Data payload and a Location header pointing at the
-    /// resource's GET action, using the createdId the worker returns as the route id.
-    /// Errors are mapped exactly as in HandleRpcResponse; a success payload without createdId
-    /// violates the creation contract and surfaces as a 500 rather than being defaulted.
+    /// Maps a worker error to its HTTP status with a ProblemDetails body. The internal error kind
+    /// selects the status but is not exposed; only the domain-authored message travels as detail.
     /// </summary>
-    /// <param name="responseJson">The serialized RpcResponse received from the worker.</param>
-    /// <param name="getActionName">Name of the controller's GET-by-id action for the Location header.</param>
-    protected IActionResult HandleRpcCreatedResponse(string responseJson, string getActionName) =>
-        HandleRpcResponse(responseJson, root =>
-        {
-            var dataElement = root.GetProperty("Data");
-            var createdId = dataElement.GetProperty("createdId").GetInt32();
-            return CreatedAtAction(getActionName, new { id = createdId }, dataElement.Deserialize<object>());
-        });
-
-    /// <summary>
-    /// Shared RPC response pipeline: parses the envelope, maps worker errors to HTTP status
-    /// codes without exposing the internal error kind, and passes a successful envelope's root
-    /// element to onSuccess to build the result. Any parsing or onSuccess failure becomes a 500.
-    /// </summary>
-    private IActionResult HandleRpcResponse(string responseJson, Func<JsonElement, IActionResult> onSuccess)
+    private ObjectResult RpcErrorResult(RpcError? error)
     {
-        _logger.LogInformation("Handling RPC response: {Response}", responseJson);
-
-        try
-        {
-            var genericResult = JsonDocument.Parse(responseJson);
-            var isSuccess = genericResult.RootElement.GetProperty("Success").GetBoolean();
-
-            if (!isSuccess)
-            {
-                var error = genericResult.RootElement.GetProperty("Error").Deserialize<RpcError>();
-                var statusCode = GetStatusCode(error?.Kind);
-                return StatusCode(statusCode, new { success = false, errorMessage = error?.Message });
-            }
-
-            return onSuccess(genericResult.RootElement);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error handling RPC response");
-            return StatusCode(500, new { success = false, errorMessage = "Error processing response" });
-        }
+        var rpcError = error ?? throw new JsonException("Failed reply carried no Error");
+        return Problem(statusCode: GetStatusCode(rpcError.Kind), detail: rpcError.Message);
     }
 
-    protected static int GetStatusCode(string? kind) =>
+    protected static int GetStatusCode(string kind) =>
         kind switch
         {
             RpcErrorKind.NOT_FOUND => StatusCodes.Status404NotFound,
@@ -151,17 +144,13 @@ public abstract class BaseApiController : ControllerBase
     }
 
     /// <summary>
-    /// Returns a 400 Bad Request result carrying the validation error message when
-    /// controller-local validation failed, or null when it passed — null tells the action
-    /// to proceed and publish the RPC message.
+    /// Returns a 400 ProblemDetails result when controller-local validation failed, or null when
+    /// it passed — null tells the action to proceed and publish the RPC message.
     /// </summary>
-    protected IActionResult? HandleLocalResponse(LocalValidationResult validationResult)
+    protected ActionResult? HandleLocalResponse(LocalValidationResult validationResult)
     {
         if (!validationResult.IsValid)
-        {
-            var response = new { errorMessage = validationResult.ErrorMessage };
-            return BadRequest(response);
-        }
+            return Problem(statusCode: StatusCodes.Status400BadRequest, detail: validationResult.ErrorMessage);
         return null;
     }
 }

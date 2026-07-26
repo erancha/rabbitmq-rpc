@@ -2,49 +2,25 @@ using Xunit;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using TodoApp.Shared.Messages;
+using TodoApp.Shared.Models;
 using TodoApp.WebApi.Controllers;
 using TodoApp.WebApi.Services;
 
 namespace TodoApp.Tests;
 
 /// <summary>
-/// Verifies the WebApi edge of the RPC pipeline: mapping of RPC error kinds to HTTP status
-/// codes, conversion of worker response JSON into HTTP action results, resolution of the
-/// idempotency key for write actions (supplied header, else derived from content), and the
-/// shared publish-and-handle pipeline (ExecuteRpc) that owns publish, response handling, and
-/// the catch-all 500 for every controller action.
+/// Verifies the typed WebApi RPC pipeline: resolution of the idempotency key for write
+/// actions (supplied header, else derived from content), typed deserialization of worker
+/// responses into contract shapes (with payload or bare), mapping of worker error kinds to
+/// HTTP status codes, and the shared ExecuteRpc pipeline that owns publish, typed response
+/// handling, and the catch-all 500 for any failure.
 /// </summary>
 public class BaseApiControllerTests
 {
-    /// <summary>
-    /// Records the arguments a controller passes to the RPC client and returns a canned response,
-    /// or throws to exercise the publish-failure path, without touching a real broker.
-    /// </summary>
-    private sealed class FakeMessageService : IRabbitMQMessageService
-    {
-        public string Response = "{\"Success\":true}";
-        public Exception? PublishFailure;
-
-        public string? CapturedRoutingKey;
-        public bool CapturedExecuteIfTimeout;
-        public string? CapturedIdempotencyKey;
-
-        public Task<string> PublishMessageRpc<T>(
-            T message, string routingKey, bool executeIfTimeout = false, string? idempotencyKey = null)
-        {
-            CapturedRoutingKey = routingKey;
-            CapturedExecuteIfTimeout = executeIfTimeout;
-            CapturedIdempotencyKey = idempotencyKey;
-
-            if (PublishFailure != null)
-                throw PublishFailure;
-
-            return Task.FromResult(Response);
-        }
-    }
-
     private sealed class TestableController : BaseApiController
     {
         public TestableController() : this(new FakeMessageService()) { }
@@ -55,17 +31,22 @@ public class BaseApiControllerTests
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
         }
 
-        public IActionResult InvokeHandleRpcResponse(string responseJson) => HandleRpcResponse(responseJson);
-        public IActionResult InvokeHandleRpcCreatedResponse(string responseJson, string getActionName) =>
-            HandleRpcCreatedResponse(responseJson, getActionName);
-        public static int InvokeGetStatusCode(string? kind) => GetStatusCode(kind);
+        public static int InvokeGetStatusCode(string kind) => GetStatusCode(kind);
         public string InvokeResolveIdempotencyKey<T>(T message) => ResolveIdempotencyKey(message);
 
-        public Task<IActionResult> InvokeExecuteRpc<TMessage>(
-            TMessage message, string routingKey, bool executeIfTimeout, Func<string, IActionResult> onSuccess) =>
-            ExecuteRpc(message, routingKey, executeIfTimeout, onSuccess);
-
         public void SetHeader(string name, string value) => HttpContext.Request.Headers[name] = value;
+
+        public Task<ActionResult> InvokeTypedExecuteRpc<TMessage, TData>(
+            TMessage message, string routingKey, bool executeIfTimeout,
+            Func<TData, ActionResult>? onSuccess = null) where TData : class =>
+            ExecuteRpc<TMessage, TData>(message, routingKey, executeIfTimeout, onSuccess);
+
+        public Task<ActionResult> InvokeBareExecuteRpc<TMessage>(
+            TMessage message, string routingKey, bool executeIfTimeout) =>
+            ExecuteRpc(message, routingKey, executeIfTimeout);
+
+        public ActionResult? InvokeHandleLocalResponse(bool isValid, string? errorMessage = null) =>
+            HandleLocalResponse(new LocalValidationResult(isValid, errorMessage));
     }
 
     [Theory]
@@ -75,8 +56,7 @@ public class BaseApiControllerTests
     [InlineData(RpcErrorKind.TEMPORARY_UNAVAILABLE, 503)]
     [InlineData(RpcErrorKind.UNKNOWN, 500)]
     [InlineData(RpcErrorKind.FATAL, 500)]
-    [InlineData(null, 500)]
-    public void Error_kind_maps_to_http_status(string? kind, int expectedStatus)
+    public void Error_kind_maps_to_http_status(string kind, int expectedStatus)
     {
         Assert.Equal(expectedStatus, TestableController.InvokeGetStatusCode(kind));
     }
@@ -117,135 +97,248 @@ public class BaseApiControllerTests
     }
 
     [Fact]
-    public void Error_response_produces_status_from_kind_and_exposes_message()
+    public async Task Typed_success_returns_ok_with_the_deserialized_payload()
     {
-        var controller = new TestableController();
+        var service = new FakeMessageService
+        {
+            Response = "{\"Success\":true,\"Data\":{\"Users\":[{\"Id\":1,\"Username\":\"alice\",\"Email\":\"a@x.com\"}]}}"
+        };
+        var controller = new TestableController(service);
 
-        var result = controller.InvokeHandleRpcResponse(
-            $"{{\"Success\":false,\"Error\":{{\"Message\":\"user not found\",\"Kind\":\"{RpcErrorKind.NOT_FOUND}\"}}}}");
+        var result = await controller.InvokeTypedExecuteRpc<GetAllUsersMessage, GetAllUsersResponse>(
+            new GetAllUsersMessage(), "user", executeIfTimeout: false);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var payload = Assert.IsType<GetAllUsersResponse>(ok.Value);
+        Assert.Equal("alice", Assert.Single(payload.Users!).Username);
+    }
+
+    [Fact]
+    public async Task Typed_error_maps_kind_to_status_and_exposes_only_the_message()
+    {
+        var service = new FakeMessageService
+        {
+            Response = $"{{\"Success\":false,\"Error\":{{\"Message\":\"user not found\",\"Kind\":\"{RpcErrorKind.NOT_FOUND}\"}}}}"
+        };
+        var controller = new TestableController(service);
+
+        var result = await controller.InvokeTypedExecuteRpc<GetUserByIdMessage, GetUserByIdResponse>(
+            new GetUserByIdMessage(5), "user", executeIfTimeout: false);
 
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(404, objectResult.StatusCode);
-        var payload = JsonSerializer.Serialize(objectResult.Value);
-        Assert.Contains("user not found", payload);
+        var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal("user not found", problem.Detail);
         // The internal error kind must not leak to HTTP clients.
-        Assert.DoesNotContain(RpcErrorKind.NOT_FOUND, payload);
+        Assert.DoesNotContain(RpcErrorKind.NOT_FOUND, JsonSerializer.Serialize(problem));
+    }
+
+    // The literal envelope RabbitMQMessageService.PublishMessageRpc's timeout branch produces —
+    // exercised through ExecuteRpc rather than reconstructed, so a drift in either side is caught.
+    private const string TimeoutEnvelope =
+        "{\"Success\":false,\"Error\":{\"Message\":\"Service is temporarily unavailable (timeout: 30s). " +
+        "Your request remains queued and will not be lost.\",\"Kind\":\"TEMPORARY_UNAVAILABLE\"}}";
+
+    [Fact]
+    public async Task Typed_pipeline_maps_the_timeout_envelope_to_503()
+    {
+        var service = new FakeMessageService { Response = TimeoutEnvelope };
+        var controller = new TestableController(service);
+
+        var result = await controller.InvokeTypedExecuteRpc<GetAllUsersMessage, GetAllUsersResponse>(
+            new GetAllUsersMessage(), "user", executeIfTimeout: false);
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(503, objectResult.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(
+            "Service is temporarily unavailable (timeout: 30s). Your request remains queued and will not be lost.",
+            problem.Detail);
     }
 
     [Fact]
-    public void Success_response_with_data_returns_ok_with_the_data()
+    public async Task Bare_pipeline_maps_the_timeout_envelope_to_503()
     {
-        var controller = new TestableController();
+        var service = new FakeMessageService { Response = TimeoutEnvelope };
+        var controller = new TestableController(service);
 
-        var result = controller.InvokeHandleRpcResponse(
-            "{\"Success\":true,\"Data\":{\"Id\":1,\"Username\":\"alice\"}}");
+        var result = await controller.InvokeBareExecuteRpc(
+            new DeleteUserMessage(3), "user", executeIfTimeout: true);
 
-        var okResult = Assert.IsType<OkObjectResult>(result);
-        Assert.Contains("alice", JsonSerializer.Serialize(okResult.Value));
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(503, objectResult.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(
+            "Service is temporarily unavailable (timeout: 30s). Your request remains queued and will not be lost.",
+            problem.Detail);
     }
 
     [Fact]
-    public void Bare_success_response_returns_ok_without_body()
+    public async Task Bare_success_returns_an_empty_200()
     {
-        var controller = new TestableController();
+        // The worker's no-payload success reply carries Data as an empty object.
+        var service = new FakeMessageService { Response = "{\"Data\":{},\"Success\":true}" };
+        var controller = new TestableController(service);
 
-        var result = controller.InvokeHandleRpcResponse("{\"Success\":true}");
+        var result = await controller.InvokeBareExecuteRpc(
+            new DeleteUserMessage(3), "user", executeIfTimeout: true);
 
         Assert.IsType<OkResult>(result);
     }
 
     [Fact]
-    public void Created_response_returns_201_with_route_to_the_new_resource()
+    public async Task Typed_created_flow_builds_the_route_from_the_payload()
     {
-        var controller = new TestableController();
+        var service = new FakeMessageService { Response = "{\"Success\":true,\"Data\":{\"createdId\":7}}" };
+        var controller = new TestableController(service);
 
-        var result = controller.InvokeHandleRpcCreatedResponse(
-            "{\"Success\":true,\"Data\":{\"createdId\":7}}", "GetUserById");
+        var result = await controller.InvokeTypedExecuteRpc<CreateUserMessage, CreatedResponse>(
+            new CreateUserMessage("alice", "a@x.com"), "user", executeIfTimeout: true,
+            onSuccess: created => controller.CreatedAtAction(
+                "GetUserById", new { id = created.CreatedId }, created));
 
         var createdResult = Assert.IsType<CreatedAtActionResult>(result);
         Assert.Equal("GetUserById", createdResult.ActionName);
         Assert.Equal(7, createdResult.RouteValues!["id"]);
-        Assert.Contains("createdId", JsonSerializer.Serialize(createdResult.Value));
+        Assert.Equal(7, Assert.IsType<CreatedResponse>(createdResult.Value).CreatedId);
     }
 
     [Fact]
-    public void Created_response_maps_worker_errors_like_any_other_response()
+    public async Task Creation_success_without_an_id_surfaces_as_500()
     {
-        var controller = new TestableController();
+        var service = new FakeMessageService { Response = "{\"Success\":true,\"Data\":{}}" };
+        var controller = new TestableController(service);
 
-        var result = controller.InvokeHandleRpcCreatedResponse(
-            $"{{\"Success\":false,\"Error\":{{\"Message\":\"bad input\",\"Kind\":\"{RpcErrorKind.VALIDATION}\"}}}}",
-            "GetUserById");
-
-        var objectResult = Assert.IsType<ObjectResult>(result);
-        Assert.Equal(400, objectResult.StatusCode);
-    }
-
-    [Fact]
-    public void Malformed_response_json_returns_500()
-    {
-        var controller = new TestableController();
-
-        var result = controller.InvokeHandleRpcResponse("not json at all");
+        var result = await controller.InvokeTypedExecuteRpc<CreateUserMessage, CreatedResponse>(
+            new CreateUserMessage("alice", "a@x.com"), "user", executeIfTimeout: true);
 
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(500, objectResult.StatusCode);
     }
 
     [Fact]
-    public async Task ExecuteRpc_passes_the_worker_response_to_onSuccess()
+    public async Task Typed_success_without_its_payload_surfaces_as_500()
     {
-        var service = new FakeMessageService { Response = "{\"Success\":true,\"Data\":{\"Username\":\"alice\"}}" };
+        var service = new FakeMessageService { Response = "{\"Success\":true}" };
         var controller = new TestableController(service);
 
-        var result = await controller.InvokeExecuteRpc(
-            new { name = "alice" }, "user", executeIfTimeout: false,
-            onSuccess: controller.InvokeHandleRpcResponse);
+        var result = await controller.InvokeTypedExecuteRpc<GetAllUsersMessage, GetAllUsersResponse>(
+            new GetAllUsersMessage(), "user", executeIfTimeout: false);
 
-        var okResult = Assert.IsType<OkObjectResult>(result);
-        Assert.Contains("alice", JsonSerializer.Serialize(okResult.Value));
-        Assert.Equal("user", service.CapturedRoutingKey);
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, objectResult.StatusCode);
     }
 
     [Fact]
-    public async Task ExecuteRpc_maps_a_publish_failure_to_500()
+    public async Task Failed_reply_with_no_error_surfaces_as_500()
+    {
+        var service = new FakeMessageService { Response = "{\"Success\":false}" };
+        var controller = new TestableController(service);
+
+        var result = await controller.InvokeTypedExecuteRpc<GetAllUsersMessage, GetAllUsersResponse>(
+            new GetAllUsersMessage(), "user", executeIfTimeout: false);
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, objectResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task Malformed_reply_surfaces_as_500()
+    {
+        var service = new FakeMessageService { Response = "not json at all" };
+        var controller = new TestableController(service);
+
+        var result = await controller.InvokeTypedExecuteRpc<GetAllUsersMessage, GetAllUsersResponse>(
+            new GetAllUsersMessage(), "user", executeIfTimeout: false);
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(500, objectResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task Typed_publish_failure_maps_to_a_500_problem()
     {
         var service = new FakeMessageService { PublishFailure = new InvalidOperationException("broker down") };
         var controller = new TestableController(service);
 
-        var result = await controller.InvokeExecuteRpc(
-            new { name = "alice" }, "user", executeIfTimeout: false,
-            onSuccess: controller.InvokeHandleRpcResponse);
+        var result = await controller.InvokeTypedExecuteRpc<GetAllUsersMessage, GetAllUsersResponse>(
+            new GetAllUsersMessage(), "user", executeIfTimeout: false);
 
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(500, objectResult.StatusCode);
+        Assert.IsType<ProblemDetails>(objectResult.Value);
     }
 
     [Fact]
-    public async Task ExecuteRpc_derives_an_idempotency_key_for_writes()
+    public async Task Typed_pipeline_derives_an_idempotency_key_for_writes()
     {
-        var service = new FakeMessageService();
+        var service = new FakeMessageService { Response = "{\"Data\":{},\"Success\":true}" };
         var controller = new TestableController(service);
 
-        await controller.InvokeExecuteRpc(
-            new { title = "Buy milk" }, "todo", executeIfTimeout: true,
-            onSuccess: controller.InvokeHandleRpcResponse);
+        await controller.InvokeBareExecuteRpc(new DeleteUserMessage(3), "user", executeIfTimeout: true);
 
         Assert.True(service.CapturedExecuteIfTimeout);
         Assert.False(string.IsNullOrEmpty(service.CapturedIdempotencyKey));
     }
 
     [Fact]
-    public async Task ExecuteRpc_sends_no_idempotency_key_for_reads()
+    public async Task Typed_pipeline_sends_no_idempotency_key_for_reads()
     {
-        var service = new FakeMessageService();
+        var service = new FakeMessageService
+        {
+            Response = "{\"Success\":true,\"Data\":{\"Users\":[]}}"
+        };
         var controller = new TestableController(service);
 
-        await controller.InvokeExecuteRpc(
-            new { id = 5 }, "todo", executeIfTimeout: false,
-            onSuccess: controller.InvokeHandleRpcResponse);
+        await controller.InvokeTypedExecuteRpc<GetAllUsersMessage, GetAllUsersResponse>(
+            new GetAllUsersMessage(), "user", executeIfTimeout: false);
 
         Assert.False(service.CapturedExecuteIfTimeout);
         Assert.Null(service.CapturedIdempotencyKey);
+    }
+
+    [Fact]
+    public void Failed_local_validation_returns_a_400_problem()
+    {
+        var controller = new TestableController();
+
+        var result = controller.InvokeHandleLocalResponse(false, "Invalid email format");
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(400, objectResult.StatusCode);
+        Assert.Equal("Invalid email format", Assert.IsType<ProblemDetails>(objectResult.Value).Detail);
+    }
+
+    [Fact]
+    public void Passing_local_validation_returns_null()
+    {
+        Assert.Null(new TestableController().InvokeHandleLocalResponse(true));
+    }
+
+    [Fact]
+    public void Configured_mvc_pipeline_serializes_camelCase()
+    {
+        // Program.cs registers a bare AddControllers() with no AddJsonOptions override, so MVC's
+        // default JsonSerializerOptions (camelCase) governs the wire body; this resolves those
+        // options through the same DI registration rather than a hand-built copy.
+        var services = new ServiceCollection();
+        services.AddControllers();
+        var opts = services.BuildServiceProvider()
+            .GetRequiredService<IOptions<Microsoft.AspNetCore.Mvc.JsonOptions>>()
+            .Value.JsonSerializerOptions;
+
+        Assert.Equal(JsonNamingPolicy.CamelCase, opts.PropertyNamingPolicy);
+
+        var wire = JsonSerializer.Serialize(
+            new GetAllUsersResponse
+            {
+                Users = new List<User> { new() { Id = 1, Username = "alice", Email = "a@x.com" } }
+            },
+            opts);
+
+        Assert.Contains("\"users\":", wire);
+        Assert.Contains("\"id\":1", wire);
+        Assert.Contains("\"username\":\"alice\"", wire);
+        Assert.DoesNotContain("\"Users\":", wire);
     }
 }

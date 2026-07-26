@@ -60,7 +60,7 @@ This application uses RabbitMQ's Direct Exchange with RPC (Remote Procedure Call
 
     3.1. Uses the [correlation ID to locate the pending request](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs) (`consumer.Received +=`) and completes it when a reply is received on the `reply_to` queue
 
-    3.2. [Returns the result](../src/TodoApp.WebApi/Controllers/BaseApiController.cs) (`HandleRpcResponse`) to the REST API consumer
+    3.2. [Deserializes the reply and returns a typed result](../src/TodoApp.WebApi/Controllers/BaseApiController.cs) (`ExecuteRpc`) to the REST API consumer — camelCase JSON on success, RFC 7807 ProblemDetails on error
 
 **Key Concepts**
 

@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
 using TodoApp.Shared.Messages;
-using TodoApp.Shared.Models;
 using TodoApp.WebApi.Services;
 using RabbitMQShared = TodoApp.Shared.Configuration.RabbitMQ;
 
@@ -16,17 +15,18 @@ public class UsersController : BaseApiController
     }
 
     [HttpPost]
-    public async Task<IActionResult> CreateUser([FromBody] CreateUserMessage message)
+    [ProducesResponseType(typeof(CreatedResponse), StatusCodes.Status201Created)]
+    public async Task<ActionResult<CreatedResponse>> CreateUser([FromBody] CreateUserMessage message)
     {
         var localResponse = HandleLocalResponse(ValidateCreateUser(message));
         if (localResponse != null)
             return localResponse;
 
-        return await ExecuteRpc(
+        return await ExecuteRpc<CreateUserMessage, CreatedResponse>(
             message,
             RabbitMQShared.RoutingKeys.User,
             executeIfTimeout: true,
-            onSuccess: json => HandleRpcCreatedResponse(json, nameof(GetUserById))
+            onSuccess: created => CreatedAtAction(nameof(GetUserById), new { id = created.CreatedId }, created)
         );
     }
 
@@ -40,8 +40,7 @@ public class UsersController : BaseApiController
         return await ExecuteRpc(
             new UpdateUserMessage { Id = id, Data = data },
             RabbitMQShared.RoutingKeys.User,
-            executeIfTimeout: true,
-            onSuccess: HandleRpcResponse
+            executeIfTimeout: true
         );
     }
 
@@ -55,32 +54,29 @@ public class UsersController : BaseApiController
         return await ExecuteRpc(
             new DeleteUserMessage(id),
             RabbitMQShared.RoutingKeys.User,
-            executeIfTimeout: true,
-            onSuccess: HandleRpcResponse
+            executeIfTimeout: true
         );
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAllUsers() =>
-        await ExecuteRpc(
+    public async Task<ActionResult<GetAllUsersResponse>> GetAllUsers() =>
+        await ExecuteRpc<GetAllUsersMessage, GetAllUsersResponse>(
             new GetAllUsersMessage(),
             RabbitMQShared.RoutingKeys.User,
-            executeIfTimeout: false,
-            onSuccess: HandleRpcResponse
+            executeIfTimeout: false
         );
 
     [HttpGet("{id}")]
-    public async Task<IActionResult> GetUserById(int id)
+    public async Task<ActionResult<GetUserByIdResponse>> GetUserById(int id)
     {
         var localResponse = HandleLocalResponse(ValidateGetUser(id));
         if (localResponse != null)
             return localResponse;
 
-        return await ExecuteRpc(
+        return await ExecuteRpc<GetUserByIdMessage, GetUserByIdResponse>(
             new GetUserByIdMessage(id),
             RabbitMQShared.RoutingKeys.User,
-            executeIfTimeout: false,
-            onSuccess: HandleRpcResponse
+            executeIfTimeout: false
         );
     }
 

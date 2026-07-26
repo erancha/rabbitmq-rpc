@@ -297,7 +297,7 @@ public abstract class BaseMessageHandler : IHostedService, IDisposable
 
     protected string CreateSuccessResponse(int createdId)
     {
-        return CreateSuccessResponse<object>(new { createdId });
+        return CreateSuccessResponse(new CreatedResponse { CreatedId = createdId });
     }
 
     protected string CreateSuccessResponse<T>(T data)

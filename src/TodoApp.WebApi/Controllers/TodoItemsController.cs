@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
 using TodoApp.Shared.Messages;
-using TodoApp.Shared.Models;
 using TodoApp.WebApi.Services;
 using RabbitMQShared = TodoApp.Shared.Configuration.RabbitMQ;
 
@@ -16,17 +15,18 @@ public class TodoItemsController : BaseApiController
     }
 
     [HttpPost]
-    public async Task<IActionResult> CreateTodoItem([FromBody] CreateTodoItemMessage message)
+    [ProducesResponseType(typeof(CreatedResponse), StatusCodes.Status201Created)]
+    public async Task<ActionResult<CreatedResponse>> CreateTodoItem([FromBody] CreateTodoItemMessage message)
     {
         var localResponse = HandleLocalResponse(ValidateCreateTodoItem(message));
         if (localResponse != null)
             return localResponse;
 
-        return await ExecuteRpc(
+        return await ExecuteRpc<CreateTodoItemMessage, CreatedResponse>(
             message,
             RabbitMQShared.RoutingKeys.Todo,
             executeIfTimeout: true,
-            onSuccess: json => HandleRpcCreatedResponse(json, nameof(GetTodoItemById))
+            onSuccess: created => CreatedAtAction(nameof(GetTodoItemById), new { id = created.CreatedId }, created)
         );
     }
 
@@ -40,8 +40,7 @@ public class TodoItemsController : BaseApiController
         return await ExecuteRpc(
             new UpdateTodoItemMessage { Id = id, Data = data },
             RabbitMQShared.RoutingKeys.Todo,
-            executeIfTimeout: true,
-            onSuccess: HandleRpcResponse
+            executeIfTimeout: true
         );
     }
 
@@ -55,38 +54,35 @@ public class TodoItemsController : BaseApiController
         return await ExecuteRpc(
             new DeleteTodoItemMessage(id),
             RabbitMQShared.RoutingKeys.Todo,
-            executeIfTimeout: true,
-            onSuccess: HandleRpcResponse
+            executeIfTimeout: true
         );
     }
 
     [HttpGet("{id}")]
-    public async Task<IActionResult> GetTodoItemById(int id)
+    public async Task<ActionResult<TodoItemResponse>> GetTodoItemById(int id)
     {
         var localResponse = HandleLocalResponse(ValidateGetTodoItem(id));
         if (localResponse != null)
             return localResponse;
 
-        return await ExecuteRpc(
+        return await ExecuteRpc<GetTodoItemByIdMessage, TodoItemResponse>(
             new GetTodoItemByIdMessage(id),
             RabbitMQShared.RoutingKeys.Todo,
-            executeIfTimeout: false,
-            onSuccess: HandleRpcResponse
+            executeIfTimeout: false
         );
     }
 
     [HttpGet("user/{userId}")]
-    public async Task<IActionResult> GetTodosByUserId(int userId)
+    public async Task<ActionResult<List<TodoItemResponse>>> GetTodosByUserId(int userId)
     {
         var localResponse = HandleLocalResponse(ValidateGetTodosByUserId(userId));
         if (localResponse != null)
             return localResponse;
 
-        return await ExecuteRpc(
+        return await ExecuteRpc<GetTodosByUserIdMessage, List<TodoItemResponse>>(
             new GetTodosByUserIdMessage(userId),
             RabbitMQShared.RoutingKeys.Todo,
-            executeIfTimeout: false,
-            onSuccess: HandleRpcResponse
+            executeIfTimeout: false
         );
     }
 
