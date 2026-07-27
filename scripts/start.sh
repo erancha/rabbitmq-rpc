@@ -1,5 +1,4 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
 # Builds and starts the Todo application stack (webapi, worker, postgres, rabbitmq) with Docker
 # Compose, then smoke-tests it end to end with deploy/simple-test.sh.
 #
@@ -14,6 +13,12 @@
 #   WORKER_REPLICAS   worker replica count (the compose file's default applies when unset)
 
 set -e
+
+# Print this script's header comment block as --help text (single source of usage docs).
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    awk 'NR==1 {next} /^#/ {sub(/^# ?/, ""); print; next} {exit}' "${BASH_SOURCE[0]}"
+    exit 0
+fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/scripts/docker-compose.yml"

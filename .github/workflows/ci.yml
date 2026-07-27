@@ -16,4 +16,4 @@ jobs:
           dotnet-version: 8.0.x
       # The suite mocks all AMQP and database boundaries, so no services are required.
       # The script detects the SDK provided by setup-dotnet and skips its own bootstrap.
-      - run: ./scripts/run-tests.sh
+      - run: ./scripts/test.sh

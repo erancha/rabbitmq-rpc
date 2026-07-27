@@ -6,7 +6,7 @@ A .NET backend demonstrating durable RPC over RabbitMQ, exercised by a deliberat
 domain: a Web API accepts REST calls, delegates every operation through the broker to a Worker
 Service — the only PostgreSQL writer — and returns the worker's reply in the HTTP response.
 
-**Contents:** [Functional Requirements](docs/requirements.md) · [Architecture](#architecture) · [Getting Started](#getting-started) · [Load Testing](docs/load-testing.md)
+**Contents:** [Functional Requirements](docs/requirements.md) · [Architecture](#architecture) · [Getting started](#getting-started) · [Testing](#testing) · [Load Testing](docs/load-testing.md) · [License](#license)
 
 ## Architecture
 
@@ -20,23 +20,22 @@ load leveling, and competing-consumer scaling at the cost of extra moving parts;
 [docs/architecture.md](docs/architecture.md) covers when that trade-off is worth it, along with the
 messaging flow, database schema, threading model, and scalability measurements:
 
-<a href="docs/architecture.md"><img src="docs/architecture-diagram.svg" alt="Todo App Architecture Diagram" width="800"></a>
+<a href="docs/architecture.md"><img src="docs/architecture-diagram.svg" alt="Architecture diagram" width="800"></a>
 
-## Getting Started
+## Getting started
 
 ### Prerequisites
 
 - Docker and Docker Compose. The services are compiled inside the .NET 8.0 SDK image during the
   Docker build, so no host .NET SDK is required.
-- Optional: a host .NET 8 SDK, to build or edit `src/TodoApp.sln` or run the unit tests outside
-  Docker (if none is found, `./scripts/run-tests.sh` downloads one into `~/.dotnet`, no sudo
-  needed).
+- Optional: a host .NET 8 SDK, to build or edit `src/TodoApp.sln` (the [test suite](#testing)
+  bootstraps its own SDK when none is found).
 
 To start the application:
 
 ```bash
 # Start the application (WSL/Linux)
-./scripts/start.sh
+./scripts/start.sh            # --help lists build and log-follow options
 ```
 
 The following services will be available:
@@ -58,3 +57,20 @@ To stop the application:
 
 `docker-helper.sh` can also tail the stack's logs (`--logs`, with severity and service filters) and
 show container status (`--ps`); see `./scripts/docker-helper.sh --help`.
+
+## Testing
+
+The unit suite mocks all AMQP and database boundaries, so it needs no running services — the same
+run CI executes on every push:
+
+```bash
+./scripts/test.sh            # downloads a user-local .NET 8 SDK into ~/.dotnet if none is found, no sudo needed
+```
+
+## License
+
+Released under the MIT License. See [LICENSE](LICENSE).
+
+---
+
+More projects by the author: [github.com/erancha](https://github.com/erancha)

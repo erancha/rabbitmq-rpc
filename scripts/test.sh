@@ -1,15 +1,15 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Runs the TodoApp.Tests unit test suite locally, with no Docker and no running stack.
 #
-#   ./scripts/run-tests.sh [extra dotnet-test args...]
+#   ./scripts/test.sh [extra dotnet-test args...]
 #
 # The tests mock all AMQP and database boundaries, so a .NET 8 SDK is the only prerequisite.
 # If no SDK 8.x is found on PATH, one is installed user-locally into ~/.dotnet via Microsoft's
 # official install script (no sudo required); subsequent runs reuse it.
 #
 # Extra arguments are passed through to dotnet test, e.g.:
-#   ./scripts/run-tests.sh --filter BaseApiControllerTests
+#   ./scripts/test.sh --filter BaseApiControllerTests
 
 set -e
 

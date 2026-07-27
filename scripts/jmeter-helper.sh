@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # The test plans (and their .jtl results, when --jtl is passed) live in jmeter/, not beside this
 # script, so run from there: the plan and results filenames below resolve against it, as does
