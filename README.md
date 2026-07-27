@@ -1,5 +1,7 @@
 # Durable RPC over RabbitMQ (.NET)
 
+[![CI](https://github.com/erancha/rabbitmq-rpc/actions/workflows/ci.yml/badge.svg)](https://github.com/erancha/rabbitmq-rpc/actions/workflows/ci.yml)
+
 A .NET backend demonstrating durable RPC over RabbitMQ, exercised by a deliberately minimal Todo
 domain: a Web API accepts REST calls, delegates every operation through the broker to a Worker
 Service — the only PostgreSQL writer — and returns the worker's reply in the HTTP response.
