@@ -139,7 +139,7 @@ The worker service ensures database availability before processing messages:
 - Each HTTP request runs on its own thread-pool thread (ASP.NET Core's default).
 - One background thread consumes the reply queue ([RabbitMQMessageService.cs](../src/TodoApp.WebApi/Services/RabbitMQMessageService.cs)). It hands each reply back to the request waiting for it by matching the correlation ID against a `ConcurrentDictionary` of pending requests — the one place the many request threads and that single reply thread meet, so the map has to be concurrent.
 - Publishing borrows a channel from a pool (`ObjectPool<IModel>`) so two requests never write to the same channel at once.
-- Publishes go out on one RabbitMQ connection and replies arrive on a second ([Program.cs](../src/TodoApp.WebApi/Program.cs)), so a burst of publishes cannot delay reply deliveries by hogging a shared socket. Each connection has its own health check (`rabbitmq-publish`, `rabbitmq-consume`).
+- Publishes go out on one RabbitMQ connection and replies arrive on a second ([Program.cs](../src/TodoApp.WebApi/Program.cs)), so a burst of publishes cannot delay reply deliveries by hogging a shared socket. Each connection has its own health check (`rabbitmq-publish`, `rabbitmq-consume`). The split is worth +7.5% throughput under the long JMeter plan ([reference measurement](load-testing.md#reference-measurement)).
 
 **Worker Service:**
 
@@ -154,7 +154,9 @@ local compose reads it from the `WORKER_REPLICAS` environment variable), and eve
 consumes the same durable queues as a competing consumer, so RabbitMQ load-balances messages
 across replicas. Raising the replica count is the scaling lever; each handler consumes with
 `prefetchCount: 5`, so a replica keeps a few deliveries staged locally and does not wait a broker
-round-trip between messages, while the low cap keeps work spread across replicas.
+round-trip between messages, while the low cap keeps work spread across replicas. Staging those
+deliveries is worth +27% throughput under the long JMeter plan
+([reference measurement](load-testing.md#reference-measurement)).
 [`scripts/optimize-replicas-count.sh`](../scripts/optimize-replicas-count.sh) searches for the
 best count for the host machine.
 

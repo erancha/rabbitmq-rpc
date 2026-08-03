@@ -20,3 +20,13 @@ to expect in the database.
 Worker replica count is the scaling lever these plans exercise; see the
 [Scalability notes](architecture.md#scalability-notes) for how the competing-consumer replicas
 are tuned.
+
+## Reference measurement
+
+The long plan on a 6-CPU Docker host with 8 worker replicas and a clean-slate stack per run
+sustains 627-635 req/s with zero errors and ~312 ms average latency. Two RPC-edge choices account
+for that number, each measured against the same plan: the
+[split publish/consume connections](architecture.md#threading-model) contribute +7.5% over a shared
+connection, and [`prefetchCount: 5`](architecture.md#scalability-notes) a further +27%, together
++38% over 459 req/s. Host CPU sits near saturation at that rate with Postgres the hottest container,
+so the next ceiling is database work rather than broker configuration.
